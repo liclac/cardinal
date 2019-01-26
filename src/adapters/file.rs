@@ -1,5 +1,5 @@
 use crate::card::card::Card;
-use crate::core::interface::Interface;
+use crate::card::interface::Interface;
 
 pub struct File<'a> {
     pub card: &'a Card<'a>,

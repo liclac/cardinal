@@ -1,7 +1,7 @@
 use crate::card::commands;
+use crate::card::Interface;
 use crate::core::command::{Request, Response};
 use crate::core::FileID;
-use crate::core::Interface;
 use crate::errors::Result;
 use crate::transport::Transport;
 
