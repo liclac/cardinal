@@ -1,10 +1,7 @@
 use crate::core::apdu;
 use crate::errors::Result;
-use crate::transport::protocol::Protocol;
 
-pub trait Transport: Sized {
-    type Protocol: Protocol;
-
+pub trait Transport {
     // Performs a raw APDU. As a user, you probably want call_apdu(), not this.
     fn call_raw_apdu(&self, req: &apdu::Request) -> Result<apdu::Response>;
 
@@ -18,12 +15,5 @@ pub trait Transport: Sized {
             apdu::StatusClass::ErrRetryWithLe(le) => self.call_apdu(req.expect(le as usize)),
             _ => Ok(res),
         }
-    }
-
-    fn serialize_req(&self, req: &apdu::Request) -> Result<Vec<u8>> {
-        Self::Protocol::serialize_req(req)
-    }
-    fn deserialize_res(&self, data: &[u8]) -> Result<apdu::Response> {
-        Self::Protocol::deserialize_res(data)
     }
 }

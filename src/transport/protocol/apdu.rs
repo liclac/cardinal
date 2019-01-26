@@ -4,8 +4,14 @@ use crate::transport::protocol::Protocol;
 
 pub struct APDU();
 
+impl APDU {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 impl Protocol for APDU {
-    fn serialize_req(req: &apdu::Request) -> Result<Vec<u8>> {
+    fn serialize_req(&self, req: &apdu::Request) -> Result<Vec<u8>> {
         // The header is always fixed...
         let mut bin = vec![req.cla, req.ins, req.p1, req.p2];
 
@@ -27,7 +33,7 @@ impl Protocol for APDU {
         Ok(bin)
     }
 
-    fn deserialize_res(data: &[u8]) -> Result<apdu::Response> {
+    fn deserialize_res(&self, data: &[u8]) -> Result<apdu::Response> {
         if data.len() < 2 {
             bail!("response data is too short")
         }
@@ -46,14 +52,15 @@ mod tests {
     #[test]
     fn test_serialize_req() {
         assert_eq!(
-            APDU::serialize_req(&Request::new(
-                0x12,
-                0x34,
-                0x56,
-                0x78,
-                vec![0x9A, 0xBC, 0xDE, 0xEF]
-            ),)
-            .unwrap(),
+            APDU::new()
+                .serialize_req(&Request::new(
+                    0x12,
+                    0x34,
+                    0x56,
+                    0x78,
+                    vec![0x9A, 0xBC, 0xDE, 0xEF]
+                ),)
+                .unwrap(),
             vec![0x12, 0x34, 0x56, 0x78, 0x04, 0x9A, 0xBC, 0xDE, 0xEF, 0xFF],
         );
     }
@@ -61,10 +68,12 @@ mod tests {
     #[test]
     fn test_serialize_req_expect() {
         assert_eq!(
-            APDU::serialize_req(
-                &Request::new(0x12, 0x34, 0x56, 0x78, vec![0x9A, 0xBC, 0xDE, 0xEF]).expect(0x69)
-            )
-            .unwrap(),
+            APDU::new()
+                .serialize_req(
+                    &Request::new(0x12, 0x34, 0x56, 0x78, vec![0x9A, 0xBC, 0xDE, 0xEF])
+                        .expect(0x69)
+                )
+                .unwrap(),
             vec![0x12, 0x34, 0x56, 0x78, 0x04, 0x9A, 0xBC, 0xDE, 0xEF, 0x69],
         );
     }
@@ -72,7 +81,7 @@ mod tests {
     #[test]
     fn test_deserialise_res_empty() {
         assert_eq!(
-            APDU::deserialize_res(&[]).unwrap_err().description(),
+            APDU::new().deserialize_res(&[]).unwrap_err().description(),
             "response data is too short"
         )
     }
@@ -80,7 +89,7 @@ mod tests {
     #[test]
     fn test_deserialise_res_status_only() {
         assert_eq!(
-            APDU::deserialize_res(&[0x90, 0x00]).unwrap(),
+            APDU::new().deserialize_res(&[0x90, 0x00]).unwrap(),
             Response::new(Status(0x90, 0x00), vec![])
         );
     }
@@ -88,7 +97,9 @@ mod tests {
     #[test]
     fn test_deserialise_res_data() {
         assert_eq!(
-            APDU::deserialize_res(&[0x69, 0x42, 0x00, 0x90, 0x00]).unwrap(),
+            APDU::new()
+                .deserialize_res(&[0x69, 0x42, 0x00, 0x90, 0x00])
+                .unwrap(),
             Response::new(Status(0x90, 0x00), vec![0x69, 0x42, 0x00])
         );
     }

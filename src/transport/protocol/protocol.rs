@@ -2,6 +2,6 @@ use crate::core::apdu;
 use crate::errors::Result;
 
 pub trait Protocol {
-    fn serialize_req(req: &apdu::Request) -> Result<Vec<u8>>;
-    fn deserialize_res(data: &[u8]) -> Result<apdu::Response>;
+    fn serialize_req(&self, req: &apdu::Request) -> Result<Vec<u8>>;
+    fn deserialize_res(&self, data: &[u8]) -> Result<apdu::Response>;
 }
