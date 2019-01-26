@@ -1,0 +1,11 @@
+[package]
+name = "cardinal"
+version = "0.1.0"
+authors = ["embr <hi@liclac.eu>"]
+edition = "2018"
+
+[dependencies]
+error-chain = "0"
+log = "0.4"
+simplelog = "^0.5.0"
+pcsc = "2.0"
