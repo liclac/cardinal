@@ -3,10 +3,10 @@ use std::convert::Into;
 // A raw request APDU.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Request {
-    pub cla: u8, // Class byte.
-    pub ins: u8, // Instruction byte.
-    pub p1: u8, // First parameter.
-    pub p2: u8, // Second parameter.
+    pub cla: u8,       // Class byte.
+    pub ins: u8,       // Instruction byte.
+    pub p1: u8,        // First parameter.
+    pub p2: u8,        // Second parameter.
     pub data: Vec<u8>, // Command data.
 
     // Expected length of response; set with `expect()`. You typically don't need this,
@@ -37,7 +37,7 @@ impl Request {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
     pub status: Status, // Status code.
-    pub data: Vec<u8>, // Response data.
+    pub data: Vec<u8>,  // Response data.
 }
 
 impl Response {
@@ -54,26 +54,26 @@ pub struct Status(pub u8, pub u8);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatusClass {
-    OK, // 0x9000
-    Generic(u8), // 0xXX00 - Generic errors/warnings of class x.
-    BytesRemaining(u8), // 0x61XX - OK, x bytes remain.
-    CardQuery(u8), // 0x6202-0x6280 - Card expects reply, 12.5.1
-    EOF, // 0x6282 - EOF or unsuccessful search.
-    SelectedFileDeactivated, // 0x6283
+    OK,                              // 0x9000
+    Generic(u8),                     // 0xXX00 - Generic errors/warnings of class x.
+    BytesRemaining(u8),              // 0x61XX - OK, x bytes remain.
+    CardQuery(u8),                   // 0x6202-0x6280 - Card expects reply, 12.5.1
+    EOF,                             // 0x6282 - EOF or unsuccessful search.
+    SelectedFileDeactivated,         // 0x6283
     BadFileOrDataControlInformation, // 0x6284 - Not formatted according to 7.4.
-    SelectedFileInTerminationState, // 0x6285
-    NoSensorInput, // 0x6286 - No input data available from a sensor on the card.
-    DeactivatedReference, // 0x6287 - At least one referenced record is deactivated.
-    UnsuccessfulComparison, // 0x6340 - Exact meaning depends on the command.
-    FullByLastWrite, // 0x6381
-    Counter(u8), // 0x63CX - Counter from 0 to 15 encoded by x.
-    ErrImmediateResponseRequired, // 0x6401 - Immediate response required by the card.
-    ErrCardQuery(u8), // 0x6402-0x6480 - ??? 12.5.1
-    ErrChannelShareAccessDenied, // 0x6481 - Logical channel shared access denied.
-    ErrChannelOpenAccessDenied, // 0x6482 - Logical channel opening access denied.
-    ErrMemoryFailure, // 0x6581
+    SelectedFileInTerminationState,  // 0x6285
+    NoSensorInput,                   // 0x6286 - No input data available from a sensor on the card.
+    DeactivatedReference,            // 0x6287 - At least one referenced record is deactivated.
+    UnsuccessfulComparison,          // 0x6340 - Exact meaning depends on the command.
+    FullByLastWrite,                 // 0x6381
+    Counter(u8),                     // 0x63CX - Counter from 0 to 15 encoded by x.
+    ErrImmediateResponseRequired,    // 0x6401 - Immediate response required by the card.
+    ErrCardQuery(u8),                // 0x6402-0x6480 - ??? 12.5.1
+    ErrChannelShareAccessDenied,     // 0x6481 - Logical channel shared access denied.
+    ErrChannelOpenAccessDenied,      // 0x6482 - Logical channel opening access denied.
+    ErrMemoryFailure,                // 0x6581
     ErrMalformedAPDU, // 0x6701 - Command APDU format not compliant with this standard. (5.1.)
-    ErrInvalidLc, // 0x6702 - The value of Lc is not the one expected. - Transport bug!!
+    ErrInvalidLc,     // 0x6702 - The value of Lc is not the one expected. - Transport bug!!
     ErrChannelUnsupported, // 0x6881 - Logical channel not supported.
     ErrSecureMessagingUnsupported, // 0x6882 - Secure messaging is not supported.
     ErrChainLastCommandExpected, // 0x6883 - Last command of the chain expected.
@@ -83,16 +83,16 @@ pub enum StatusClass {
     ErrAuthMethodBlocked, // 0x6983 - Nice.
     ErrRefDataUnusable, // 0x6984 - Nice.
     ErrConditionsNotSatisfied, // 0x6985 - Nice.
-    ErrNoCurrentEF, // 0x6986 - Nice.
+    ErrNoCurrentEF,   // 0x6986 - Nice.
     ErrMissingSecureMessagingDOs, // 0x6987 - Expected secure messaging DOs missing - Nice.
     ErrIncorrectSecureMessagingDOs, // 0x6988 - Incorrect secure messaging DOs - Nice.
-    ErrParamsData, // 0x6A80 - Incorrect parameters in the command data field.
-    ErrParamsP1P2, // 0x6B00 - Wrong parameters P1-P2.
+    ErrParamsData,    // 0x6A80 - Incorrect parameters in the command data field.
+    ErrParamsP1P2,    // 0x6B00 - Wrong parameters P1-P2.
     ErrRetryWithLe(u8), // 0x6CXX - Wrong Le, retry with Le=x.
-    ErrInstruction, // 0x6D00 - Invalid or unsupported instruction.
-    ErrClass, // 0x6E00 - Unsupported class byte.
-    ErrNoIdea, // 0x6F00 - "No precise diagnosis".
-    Unknown(u8, u8), // Anything else!
+    ErrInstruction,   // 0x6D00 - Invalid or unsupported instruction.
+    ErrClass,         // 0x6E00 - Unsupported class byte.
+    ErrNoIdea,        // 0x6F00 - "No precise diagnosis".
+    Unknown(u8, u8),  // Anything else!
 }
 
 impl Status {
