@@ -16,7 +16,7 @@ pub trait Card: Transport {
 
     // Execute a SELECT command.
     // TODO: Iterator form of this.
-    fn select<T: Interface>(&self, file: &FileID) -> Result<T> {
+    fn select<'a, T: Interface<'a, Self>>(&'a self, file: &FileID) -> Result<T> {
         if let Err(err) = self.call(&commands::Select::new(&file)) {
             return Err(err);
         }

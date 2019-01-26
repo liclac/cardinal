@@ -3,7 +3,8 @@ extern crate error_chain;
 #[macro_use]
 extern crate log;
 
-pub mod core;
+pub mod adapters;
 pub mod card;
-pub mod transport;
+pub mod core;
 pub mod errors;
+pub mod transport;

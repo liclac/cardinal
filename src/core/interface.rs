@@ -1,10 +1,7 @@
-use crate::transport::Transport;
+use crate::card::Card;
 
 // Interfaces wrap Transports and provide higher-level, application-specific APIs.
-pub trait Interface: Sized {
-    // Instantiates the selectable with a certain transport.
-    fn with<T: Transport>(t: &T) -> Self;
-
-    // Returns the wrapped transport.
-    fn transport<T: Transport>() -> T;
+pub trait Interface<'a, CardT: Card> {
+    // Instantiates an interface with a certain transport.
+    fn with(card: &'a CardT) -> Self;
 }
