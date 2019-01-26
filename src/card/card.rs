@@ -1,6 +1,6 @@
 use crate::card::commands;
 use crate::core::command::{Request, Response};
-use crate::core::File;
+use crate::core::FileID;
 use crate::core::Interface;
 use crate::errors::Result;
 use crate::transport::Transport;
@@ -16,7 +16,7 @@ pub trait Card: Transport {
 
     // Execute a SELECT command.
     // TODO: Iterator form of this.
-    fn select<T: Interface>(&self, file: &File) -> Result<T> {
+    fn select<T: Interface>(&self, file: &FileID) -> Result<T> {
         if let Err(err) = self.call(&commands::Select::new(&file)) {
             return Err(err);
         }

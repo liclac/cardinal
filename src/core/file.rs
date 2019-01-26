@@ -1,20 +1,20 @@
-// Describes a reference to a file, either an EF's filename, a DF's AID, or the
+// Describes a reference to a file ID, either an EF's filename, a DF's AID, or the
 // MF (Master File/Root).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum File {
-    EF(Vec<u8>), // Elementary Files.
-    DF(Vec<u8>), // Dedicated Files.
+pub enum FileID {
+    EF(Vec<u8>),  // Elementary Files.
+    DF(Vec<u8>),  // Dedicated Files.
     AID(Vec<u8>), // DF AID; potentially truncated.
-    MF, // Master File, aka root.
+    MF,           // Master File, aka root.
 }
 
-impl File {
+impl FileID {
     pub fn id(&self) -> &[u8] {
         match self {
-            File::EF(id) => id.as_slice(),
-            File::DF(id) => id.as_slice(),
-            File::AID(id) => id.as_slice(),
-            File::MF => &[0x3F, 0x00],
+            FileID::EF(id) => id.as_slice(),
+            FileID::DF(id) => id.as_slice(),
+            FileID::AID(id) => id.as_slice(),
+            FileID::MF => &[0x3F, 0x00],
         }
     }
 
@@ -23,13 +23,13 @@ impl File {
     }
 }
 
-impl Into<Vec<u8>> for File {
+impl Into<Vec<u8>> for FileID {
     fn into(self) -> Vec<u8> {
         match self {
-            File::EF(id) => id,
-            File::DF(id) => id,
-            File::AID(id) => id,
-            File::MF => vec![0x3F, 0x00],
+            FileID::EF(id) => id,
+            FileID::DF(id) => id,
+            FileID::AID(id) => id,
+            FileID::MF => vec![0x3F, 0x00],
         }
     }
 }
