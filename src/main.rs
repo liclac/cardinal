@@ -1,4 +1,3 @@
-use cardinal::adapters::file::File;
 use cardinal::card::{Card, Interface};
 use cardinal::core::FileID;
 use cardinal::errors::Result;
@@ -36,8 +35,7 @@ fn run() -> Result<()> {
     // List applications on the card!
     let transport = PCSC::new(scard);
     let card = Card::new(&transport);
-    let dir_id = FileID::Name("1PAY.SYS.DDF01".into());
-    let _dir: File = card.select(&dir_id)?;
+    card.select(&FileID::Name("1PAY.SYS.DDF01".into()))?;
 
     Ok(())
 }

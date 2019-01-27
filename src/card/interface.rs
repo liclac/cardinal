@@ -27,3 +27,13 @@ pub trait Interface<'a> {
         Ok(T::with(self.card()))
     }
 }
+
+impl Interface<'_> for () {
+    fn with(_: &'_ Card) -> Self {
+        ()
+    }
+
+    fn card(&self) -> &'static Card {
+        &Card { transport: &() }
+    }
+}

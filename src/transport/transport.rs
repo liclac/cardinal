@@ -30,3 +30,9 @@ pub trait Transport {
         }
     }
 }
+
+impl Transport for () {
+    fn call_raw_apdu(&self, req: &Request) -> Result<Response> {
+        Err("() is not a valid transport!".into())
+    }
+}
