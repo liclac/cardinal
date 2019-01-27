@@ -1,5 +1,5 @@
+use cardinal::adapters::emv;
 use cardinal::card::{Card, Interface};
-use cardinal::core::FileID;
 use cardinal::errors::Result;
 use cardinal::transport::PCSC;
 use error_chain::quick_main;
@@ -35,7 +35,7 @@ fn run() -> Result<()> {
     // List applications on the card!
     let transport = PCSC::new(scard);
     let card = Card::new(&transport);
-    card.select(&FileID::Name("1PAY.SYS.DDF01".into()))?;
+    let _emv_dir: emv::Directory = card.select(&emv::Directory::id())?;
 
     Ok(())
 }
