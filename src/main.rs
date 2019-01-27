@@ -3,9 +3,12 @@ use cardinal::card::{Card, Interface};
 use cardinal::core::FileID;
 use cardinal::errors::Result;
 use cardinal::transport::PCSC;
+use error_chain::quick_main;
 use log::{debug, info};
 
-fn main() -> Result<()> {
+quick_main!(run);
+
+fn run() -> Result<()> {
     // Init logging...
     simplelog::TermLogger::init(simplelog::LevelFilter::Debug, simplelog::Config::default())
         .unwrap();
