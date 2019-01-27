@@ -1,4 +1,4 @@
-use crate::core::apdu::{Request, Response, StatusClass};
+use crate::core::apdu::{Request, Response, Status};
 use crate::errors::Result;
 
 pub trait Transport {
@@ -11,8 +11,8 @@ pub trait Transport {
     // your transport has some oddball behaviour here.
     fn call_apdu(&self, req: Request) -> Result<Response> {
         let res = self.call_raw_apdu(&req)?;
-        match res.status.class() {
-            StatusClass::ErrRetryWithLe(le) => self.call_apdu(req.expect(le as usize)),
+        match res.status {
+            Status::ErrRetryWithLe(le) => self.call_apdu(req.expect(le as usize)),
             _ => Ok(res),
         }
     }

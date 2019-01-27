@@ -38,7 +38,7 @@ impl Protocol for APDU {
             bail!("response data is too short")
         }
         Ok(apdu::Response::new(
-            apdu::Status(data[data.len() - 2], data[data.len() - 1]),
+            apdu::Status::from(data[data.len() - 2], data[data.len() - 1]),
             &data[0..data.len() - 2],
         ))
     }
@@ -90,7 +90,7 @@ mod tests {
     fn test_deserialise_res_status_only() {
         assert_eq!(
             APDU::new().deserialize_res(&[0x90, 0x00]).unwrap(),
-            Response::new(Status(0x90, 0x00), vec![])
+            Response::new(Status::from(0x90, 0x00), vec![])
         );
     }
 
@@ -100,7 +100,7 @@ mod tests {
             APDU::new()
                 .deserialize_res(&[0x69, 0x42, 0x00, 0x90, 0x00])
                 .unwrap(),
-            Response::new(Status(0x90, 0x00), vec![0x69, 0x42, 0x00])
+            Response::new(Status::from(0x90, 0x00), vec![0x69, 0x42, 0x00])
         );
     }
 }
