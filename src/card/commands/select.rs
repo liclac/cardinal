@@ -55,8 +55,8 @@ impl<'a> Select<'a> {
 
     fn p1(&self) -> u8 {
         match self.file {
-            FileID::EF(_) | FileID::DF(_) | FileID::MF => 0b0000,
-            FileID::AID(_) => 0b0100,
+            FileID::Name(_) => 0b0100,
+            FileID::EF(_) | FileID::DF(_) | FileID::AID(_) | FileID::MF => 0b0000,
         }
     }
     fn p2(&self) -> u8 {

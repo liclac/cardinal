@@ -2,15 +2,17 @@
 // MF (Master File/Root).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileID {
-    EF(Vec<u8>),  // Elementary Files.
-    DF(Vec<u8>),  // Dedicated Files.
-    AID(Vec<u8>), // DF AID; potentially truncated.
-    MF,           // Master File, aka root.
+    Name(Vec<u8>), // File name, eg. '1PAY.SYS.DDF01'.
+    EF(Vec<u8>),   // Elementary Files.
+    DF(Vec<u8>),   // Dedicated Files.
+    AID(Vec<u8>),  // DF AID; potentially truncated.
+    MF,            // Master File, aka root.
 }
 
 impl FileID {
     pub fn id(&self) -> &[u8] {
         match self {
+            FileID::Name(id) => id.as_slice(),
             FileID::EF(id) => id.as_slice(),
             FileID::DF(id) => id.as_slice(),
             FileID::AID(id) => id.as_slice(),
@@ -26,6 +28,7 @@ impl FileID {
 impl Into<Vec<u8>> for FileID {
     fn into(self) -> Vec<u8> {
         match self {
+            FileID::Name(id) => id,
             FileID::EF(id) => id,
             FileID::DF(id) => id,
             FileID::AID(id) => id,

@@ -19,9 +19,15 @@ pub trait Request {
         (0x00, 0x00, Vec::new())
     }
 
+    fn le(&self) -> Option<usize> {
+        None
+    }
+
     fn to_apdu(&self) -> Result<apdu::Request> {
         let (p1, p2, data) = self.data();
-        Ok(apdu::Request::new(self.cla(), self.ins(), p1, p2, data))
+        let mut req = apdu::Request::new(self.cla(), self.ins(), p1, p2, data);
+        req.le = self.le();
+        Ok(req)
     }
 }
 

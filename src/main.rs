@@ -36,7 +36,7 @@ fn run() -> Result<()> {
     // List applications on the card!
     let transport = PCSC::new(scard);
     let card = Card::new(&transport);
-    let dir_id = FileID::EF(vec![0x2F, 0x00]);
+    let dir_id = FileID::Name("1PAY.SYS.DDF01".into());
     let _dir: File = card.select(&dir_id)?;
 
     Ok(())

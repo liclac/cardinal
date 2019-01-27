@@ -337,7 +337,7 @@ impl Status {
     }
 
     pub fn sw2(&self) -> u8 {
-        self.as_tuple().0
+        self.as_tuple().1
     }
 }
 
