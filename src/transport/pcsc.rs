@@ -30,20 +30,32 @@ impl Transport for PCSC {
             Some(v) => v,
             None => 256,
         };
-
-        info!(
-            ">> cla={:x} ins={:x} p1={:x} p2={:x} Lc={:} Le={:}",
+        debug!(
+            ">> SEND: CLA={:#x} INS={:#x} P1={:#x} P2={:#x} Lc={:} Le={:} DATA={:x?}",
             req.cla,
             req.ins,
             req.p1,
             req.p2,
             req.data.len(),
             le,
+            req.data,
         );
 
-        let req_vec = self.proto.serialize_req(req)?;
+        let req_data = self.proto.serialize_req(req)?;
+        debug!(">> SEND: RAW={:x?}", req_data);
+
         let mut res_buf = [0; pcsc::MAX_BUFFER_SIZE];
-        let res_data = self.card.transmit(req_vec.as_slice(), &mut res_buf)?;
-        self.proto.deserialize_res(res_data)
+        let res_data = self.card.transmit(req_data.as_slice(), &mut res_buf)?;
+        debug!("<< RECV: RAW={:x?}", res_data);
+
+        let res = self.proto.deserialize_res(res_data)?;
+        debug!(
+            "<< RECV: SW1={:#x} SW2={:#x} DATA={:x?}",
+            res.status.sw1(),
+            res.status.sw2(),
+            res.data
+        );
+
+        Ok(res)
     }
 }
