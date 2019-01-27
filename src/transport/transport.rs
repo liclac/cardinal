@@ -1,5 +1,5 @@
 use crate::core::apdu::{Request, Response, Status};
-use crate::errors::Result;
+use crate::errors::{ErrorKind, Result};
 
 pub trait Transport {
     // Performs a raw APDU. As a user, you probably want call_apdu(), not this.
@@ -12,8 +12,9 @@ pub trait Transport {
     fn call_apdu(&self, req: Request) -> Result<Response> {
         let res = self.call_raw_apdu(&req)?;
         match res.status {
+            Status::OK => Ok(res),
             Status::ErrRetryWithLe(le) => self.call_apdu(req.expect(le as usize)),
-            _ => Ok(res),
+            _ => Err(ErrorKind::StatusError(res.status).into()),
         }
     }
 }

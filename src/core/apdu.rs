@@ -108,9 +108,11 @@ pub enum Status {
 
 impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (sw1, sw2) = self.as_tuple();
+        write!(f, "{:#X}{:X} - ", sw1, sw2)?;
         match self {
             Status::OK => write!(f, "OK!"),
-            Status::Warning(x) => write!(f, "Warning: Generic: {:#x}00", x),
+            Status::Warning(x) => write!(f, "Warning: {:#X}", x),
             Status::BytesRemaining(x) => write!(f, "{:} bytes remaining", x),
             Status::CardQuery(x) => write!(f, "Card triggered a query: {:}", x),
             Status::ReturnDataMayBeCorrupted => write!(f, "Returned data may be corrupted"),
@@ -130,7 +132,7 @@ impl fmt::Display for Status {
             Status::UnsuccessfulComparison => write!(f, "Unsuccessful comparison"),
             Status::FullByLastWrite => write!(f, "File filled up by last write"),
             Status::Counter(x) => write!(f, "Counter: {:}", x),
-            Status::ErrError(x) => write!(f, "Error: Generic: {:#x}00", x),
+            Status::ErrError(_) => write!(f, "Error"),
             Status::ErrImmediateResponseRequired => {
                 write!(f, "Error: Immediate response required by card")
             }
@@ -142,7 +144,7 @@ impl fmt::Display for Status {
                 write!(f, "Error: Logical channel opening denied")
             }
             Status::ErrMemoryFailure => write!(f, "Error: Memory failure"),
-            Status::ErrSecurity(x) => write!(f, "Error: Security: {:#x}", x),
+            Status::ErrSecurity(x) => write!(f, "Error: Security: {:#X}", x),
             Status::ErrMalformedAPDU => write!(f, "Error: Malformed Request APDU"),
             Status::ErrInvalidLc => write!(f, "Error: The value of Lc is not the one expected"),
             Status::ErrChannelUnsupported => write!(f, "Error: Logical channel is not supported"),
@@ -175,9 +177,7 @@ impl fmt::Display for Status {
             Status::ErrRecordNotFound => write!(f, "Error: Record not found"),
             Status::ErrNotEnoughSpace => write!(f, "Error: Not enough space in file"),
             Status::ErrNcTLVStructure => write!(f, "Error: Nc inconsistent with TLV structure"),
-            Status::ErrP1P2(x, y) => {
-                write!(f, "Error: Incorrect parameters in P1/P2 ({:#x}{:#x})", x, y)
-            }
+            Status::ErrP1P2(_, _) => write!(f, "Error: Incorrect parameters in P1/P2"),
             Status::ErrNcP1P2 => write!(f, "Error: Nc inconsistent with parameters P1/P2"),
             Status::ErrRefNotFound => write!(f, "Error: Reference or referenced data not found"),
             Status::ErrFileAlreadyExists => write!(f, "Error: File already exists"),
@@ -187,7 +187,7 @@ impl fmt::Display for Status {
             Status::ErrInstruction => write!(f, "Error: "),
             Status::ErrClass => write!(f, ""),
             Status::ErrNoIdea => write!(f, ""),
-            Status::Unknown(x, y) => write!(f, "UNKNOWN: {:#x}{:#x}", x, y),
+            Status::Unknown(_, _) => write!(f, "Unknown"),
         }
     }
 }
@@ -348,8 +348,8 @@ mod tests {
     #[test]
     fn test_to_u16() {
         assert_eq!(
-            format!("{:#x}", Status::from(0x90, 0x00).as_u16()),
-            format!("{:#x}", 0x9000)
+            format!("{:#X}", Status::from(0x90, 0x00).as_u16()),
+            format!("{:#X}", 0x9000)
         );
     }
 
@@ -365,8 +365,8 @@ mod tests {
     fn test_round_trip() {
         for i in 0x0000..0xFFFF {
             assert_eq!(
-                format!("{:#x}", Status::from_u16(i).as_u16()),
-                format!("{:#x}", i)
+                format!("{:#X}", Status::from_u16(i).as_u16()),
+                format!("{:#X}", i)
             );
         }
     }
