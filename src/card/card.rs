@@ -1,7 +1,5 @@
-use crate::card::commands;
-use crate::card::Interface;
-use crate::core::command::{Request, Response};
-use crate::core::FileID;
+use crate::card::interface::Interface;
+use crate::core::apdu::{Request, Response};
 use crate::errors::Result;
 use crate::transport::Transport;
 
@@ -16,18 +14,22 @@ impl<'a> Card<'a> {
     pub fn new(transport: &'a Transport) -> Self {
         Self { transport }
     }
+}
 
-    // Convenience function to execute a higher-order command.
-    pub fn call<ReqT: Request>(&self, cmd: &ReqT) -> Result<ReqT::Returns> {
-        ReqT::Returns::from_apdu(self.transport.call_apdu(cmd.to_apdu()?)?)
+impl<'a> Interface<'a> for Card<'a> {
+    fn with(card: &'a Card) -> Self {
+        Card {
+            transport: card.transport,
+        }
     }
 
-    // Execute a SELECT command.
-    // TODO: Iterator form of this.
-    pub fn select<T: Interface<'a>>(&'a self, file: &FileID) -> Result<T> {
-        if let Err(err) = self.call(&commands::Select::new(&file)) {
-            return Err(err);
-        }
-        Ok(T::with(self))
+    fn card(&self) -> &'a Card {
+        self
+    }
+}
+
+impl<'a> Transport for Card<'a> {
+    fn call_raw_apdu(&self, req: &Request) -> Result<Response> {
+        self.transport.call_raw_apdu(req)
     }
 }

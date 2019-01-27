@@ -1,10 +1,9 @@
-use cardinal::errors::Result;
-use log::{debug, info};
-
 use cardinal::adapters::file::File;
-use cardinal::card::Card;
+use cardinal::card::{Card, Interface};
 use cardinal::core::FileID;
+use cardinal::errors::Result;
 use cardinal::transport::PCSC;
+use log::{debug, info};
 
 fn main() -> Result<()> {
     // Init logging...

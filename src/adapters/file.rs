@@ -9,4 +9,8 @@ impl<'a> Interface<'a> for File<'a> {
     fn with(card: &'a Card) -> Self {
         Self { card: card }
     }
+
+    fn card(&self) -> &'a Card {
+        self.card
+    }
 }
