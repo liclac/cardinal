@@ -85,7 +85,7 @@ mod tests {
         let sel = super::Select::new(&aid);
         assert_eq!(
             sel.to_apdu().unwrap(),
-            apdu::Request::new(0x00, 0xA4, 0x04, 0x00, aid.to_vec()),
+            apdu::Request::new(0x00, 0xA4, 0x00, 0x00, aid.to_vec()),
         );
     }
 }
