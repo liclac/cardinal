@@ -4,6 +4,7 @@ extern crate error_chain;
 extern crate log;
 
 pub mod adapters;
+pub mod ber;
 pub mod card;
 pub mod core;
 pub mod errors;
