@@ -76,9 +76,13 @@ pub struct Iter<'a> {
     pub buf: &'a [u8],
 }
 
+pub fn iter<'a>(buf: &'a [u8]) -> Iter<'a> {
+    Iter::new(buf)
+}
+
 impl<'a> Iter<'a> {
     pub fn new(buf: &'a [u8]) -> Self {
-        Self { buf: buf }
+        Self { buf }
     }
 }
 
@@ -105,16 +109,92 @@ mod tests {
 
         let (tag, value) = read_tlv(&mut bp).unwrap();
         assert_eq!(0x1f8e0e, tag);
-        assert_eq!(vec![0x68, 0x65, 0x6c, 0x6c, 0x6f], value);
+        assert_eq!(value, [0x68, 0x65, 0x6c, 0x6c, 0x6f]);
     }
 
     #[test]
     fn test_iter() {
         let b = vec![0x1F, 0x8E, 0x0E, 0x05, 0x68, 0x65, 0x6c, 0x6c, 0x6f];
-        let vec: Vec<Result<(u32, &[u8])>> = Iter::new(&b).collect();
+        let vec: Vec<Result<(u32, &[u8])>> = iter(&b).collect();
         let expect: Vec<Result<(u32, &[u8])>> =
             vec![Ok((0x1f8e0e, &[0x68, 0x65, 0x6c, 0x6c, 0x6f]))];
         assert_eq!(1, vec.len());
         assert_eq!(vec[0].as_ref().unwrap(), expect[0].as_ref().unwrap());
+    }
+
+    #[test]
+    fn test_select_emv() {
+        // SELECT 1PAY.SYS.DDF01 from a Swedish Debit Mastercard (ICA Banken).
+        let b = vec![
+            0x6f, 0x20, 0x84, 0xe, 0x31, 0x50, 0x41, 0x59, 0x2e, 0x53, 0x59, 0x53, 0x2e, 0x44,
+            0x44, 0x46, 0x30, 0x31, 0xa5, 0xe, 0x88, 0x01, 0x01, 0x5f, 0x2d, 0x4, 0x73, 0x76, 0x65,
+            0x6e, 0x9f, 0x011, 0x01, 0x01,
+        ];
+        for (i, tvr) in iter(&b).enumerate() {
+            // This should contain only a single value.
+            assert_eq!(0, i);
+            let (tag, value) = tvr.expect("iterator failed");
+
+            // 0x6F - FCI Template.
+            assert_eq!(tag, 0x6f);
+            assert_eq!(
+                value,
+                [
+                    0x84, 0xe, 0x31, 0x50, 0x41, 0x59, 0x2e, 0x53, 0x59, 0x53, 0x2e, 0x44, 0x44,
+                    0x46, 0x30, 0x31, 0xa5, 0xe, 0x88, 0x1, 0x1, 0x5f, 0x2d, 0x4, 0x73, 0x76, 0x65,
+                    0x6e, 0x9f, 0x11, 0x1, 0x1
+                ],
+            );
+            for (i, tvr) in iter(&value).enumerate() {
+                let (tag, value) = tvr.expect("FCI Template iterator failed");
+                match i {
+                    0 => {
+                        // 0x84 - DF Name.
+                        assert_eq!(tag, 0x84);
+                        assert_eq!(value, "1PAY.SYS.DDF01".as_bytes());
+                    }
+                    1 => {
+                        // 0xA5 - FCI Proprietary Template.
+                        assert_eq!(tag, 0xa5);
+                        assert_eq!(
+                            value,
+                            [
+                                0x88, 0x1, 0x1, 0x5f, 0x2d, 0x4, 0x73, 0x76, 0x65, 0x6e, 0x9f,
+                                0x11, 0x1, 0x1
+                            ],
+                        );
+
+                        for (i, tvr) in iter(&value).enumerate() {
+                            let (tag, value) = tvr.expect("FCI PT iterator failed");
+                            match i {
+                                0 => {
+                                    // 0x88 - SFI of the Directory Elementary File.
+                                    assert_eq!(tag, 0x88);
+                                    assert_eq!(value, [0x01]);
+                                }
+                                1 => {
+                                    // 0x5F2D - Language preference.
+                                    assert_eq!(tag, 0x5f2d);
+                                    assert_eq!(value, "sven".as_bytes());
+                                }
+                                2 => {
+                                    // 0x9F11 - Issuer Code Table Index.
+                                    assert_eq!(tag, 0x9F11);
+                                    assert_eq!(value, [0x01]);
+                                }
+                                _ => panic!(
+                                    "Unexpected item in FCI PT ({:}): {:#x} => {:#x?}",
+                                    i, tag, value
+                                ),
+                            }
+                        }
+                    }
+                    _ => panic!(
+                        "Unexpected item in FCI Template ({:}): {:#x} => {:#x?}",
+                        i, tag, value
+                    ),
+                };
+            }
+        }
     }
 }
