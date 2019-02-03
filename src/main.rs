@@ -35,7 +35,7 @@ fn run() -> Result<()> {
     // List applications on the card!
     let transport = PCSC::new(scard);
     let card = Card::new(&transport);
-    let _emv_dir: emv::Directory = card.select(&emv::Directory::id())?;
+    let emv_dir = emv::Directory::select(card)?;
 
     Ok(())
 }
