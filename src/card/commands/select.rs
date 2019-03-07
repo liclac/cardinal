@@ -1,4 +1,4 @@
-use crate::core::{FileID, Request};
+use crate::core::{FileID, Request, Response};
 
 // A SELECT command can select the first, last, next or previous occurrence of an ID.
 // Normally, what you want is the first; we should build an iterator API around the rest.
@@ -23,16 +23,19 @@ impl SelectOccurrence {
 
 // Encodes a SELECT command.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Select<'a> {
+pub struct Select<'a, RetT: Response> {
     pub file: &'a FileID,
     pub occurrence: SelectOccurrence,
+
+    _ret_t: std::marker::PhantomData<RetT>,
 }
 
-impl<'a> Select<'a> {
+impl<'a, RetT: Response> Select<'a, RetT> {
     pub fn new(file: &'a FileID) -> Self {
         Self {
             file,
             occurrence: SelectOccurrence::First,
+            _ret_t: std::marker::PhantomData {},
         }
     }
 
@@ -64,8 +67,8 @@ impl<'a> Select<'a> {
     }
 }
 
-impl<'a> Request for Select<'a> {
-    type Returns = ();
+impl<'a, RetT: Response> Request for Select<'a, RetT> {
+    type Returns = RetT;
 
     fn ins(&self) -> u8 {
         0xA4
@@ -82,7 +85,7 @@ mod tests {
     #[test]
     fn test_select_cirrus() {
         let aid = FileID::AID(vec![0xA0, 0x00, 0x00, 0x00, 0x04, 0x60, 0x00]);
-        let sel = super::Select::new(&aid);
+        let sel = super::Select::<()>::new(&aid);
         assert_eq!(
             sel.to_apdu().unwrap(),
             apdu::Request::new(0x00, 0xA4, 0x00, 0x00, aid.to_vec()),

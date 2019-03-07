@@ -1,6 +1,7 @@
 use cardinal::adapters::emv;
 use cardinal::card::{Card, Interface};
-use cardinal::errors::Result;
+use cardinal::core::apdu::{self, Status};
+use cardinal::errors::{Error, ErrorKind, Result};
 use cardinal::transport::PCSC;
 use error_chain::quick_main;
 use log::{debug, error, info};
@@ -47,7 +48,15 @@ fn run() -> Result<()> {
     // List applications on the card!
     let transport = PCSC::new(scard);
     let card = Card::new(&transport);
-    let emv_dir = emv::Directory::select(card)?;
+    let emv_dir = emv::Directory::select(&card)?;
+    println!("{:#x?}", emv_dir.selection);
+    for i in 0x01..=0xFF as u8 {
+        match emv_dir.read_record::<apdu::Response>(emv_dir.record_num(i)?) {
+            Ok(r) => info!("{:} => {:#x?}", i, r),
+            Err(Error(ErrorKind::StatusError(Status::ErrRecordNotFound), _)) => break,
+            Err(e) => error!("{:} => {:?}", i, e),
+        };
+    }
 
     Ok(())
 }

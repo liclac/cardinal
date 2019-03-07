@@ -1,4 +1,4 @@
-use crate::card::commands::Select;
+use crate::card::commands::{ReadRecord, Record, Select};
 use crate::card::Card;
 use crate::core::command::{Request, Response};
 use crate::core::file::FileID;
@@ -7,8 +7,10 @@ use crate::transport::transport::Transport;
 
 // Interfaces wrap Cards and provide higher-level, application-specific APIs.
 pub trait Interface<'a> {
+    type SelectResponse: Response;
+
     // Instantiates an interface on an underlying card.
-    fn with(card: &'a Card) -> Self;
+    fn with(card: &'a Card<'a>, selection: Self::SelectResponse) -> Self;
 
     // Returns the underlying card.
     fn card(&self) -> &'a Card;
@@ -21,15 +23,18 @@ pub trait Interface<'a> {
     // Execute a SELECT command.
     // TODO: Iterator form of this.
     fn select<'f, T: Interface<'a>>(&'a self, file: &'f FileID) -> Result<T> {
-        if let Err(err) = self.call(&Select::new(&file)) {
-            return Err(err);
-        }
-        Ok(T::with(self.card()))
+        Ok(T::with(self.card(), self.call(&Select::new(&file))?))
+    }
+
+    fn read_record<T: Response>(&'a self, rec: Record) -> Result<T> {
+        self.call(&ReadRecord::<T>::new(rec))
     }
 }
 
 impl Interface<'_> for () {
-    fn with(_: &'_ Card) -> Self {
+    type SelectResponse = ();
+
+    fn with(_: &'_ Card, _: Self::SelectResponse) -> Self {
         ()
     }
 

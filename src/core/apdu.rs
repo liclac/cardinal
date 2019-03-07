@@ -1,3 +1,5 @@
+use crate::core::command;
+use crate::errors::Result;
 use std::convert::Into;
 use std::fmt;
 
@@ -34,6 +36,23 @@ impl Request {
     }
 }
 
+impl command::Request for Request {
+    type Returns = Response;
+
+    fn cla(&self) -> u8 {
+        self.cla
+    }
+    fn ins(&self) -> u8 {
+        self.ins
+    }
+    fn data(&self) -> (u8, u8, Vec<u8>) {
+        (self.p1, self.p2, self.data.clone())
+    }
+    fn le(&self) -> Option<usize> {
+        self.le
+    }
+}
+
 // A raw response APDU.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
@@ -47,6 +66,12 @@ impl Response {
             data: data.into(),
             status,
         };
+    }
+}
+
+impl command::Response for Response {
+    fn from_apdu(res: Response) -> Result<Self> {
+        Ok(res)
     }
 }
 

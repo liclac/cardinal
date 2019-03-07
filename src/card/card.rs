@@ -17,7 +17,9 @@ impl<'a> Card<'a> {
 }
 
 impl<'a> Interface<'a> for Card<'a> {
-    fn with(card: &'a Card) -> Self {
+    type SelectResponse = ();
+
+    fn with(card: &'a Card, _selection: Self::SelectResponse) -> Self {
         Card {
             transport: card.transport,
         }
