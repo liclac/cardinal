@@ -3,14 +3,26 @@ use cardinal::card::{Card, Interface};
 use cardinal::errors::Result;
 use cardinal::transport::PCSC;
 use error_chain::quick_main;
-use log::{debug, info};
+use log::{debug, error, info};
+use std::fs::File;
 
 quick_main!(run);
 
+fn init_logging() -> Result<()> {
+    let logcfg = simplelog::Config::default();
+    simplelog::CombinedLogger::init(vec![
+        simplelog::TermLogger::new(simplelog::LevelFilter::Info, logcfg).unwrap(),
+        simplelog::WriteLogger::new(
+            simplelog::LevelFilter::Trace,
+            logcfg,
+            File::create("cardinal_trace.log")?,
+        ),
+    ])?;
+    Ok(())
+}
+
 fn run() -> Result<()> {
-    // Init logging...
-    simplelog::TermLogger::init(simplelog::LevelFilter::Debug, simplelog::Config::default())
-        .unwrap();
+    init_logging()?;
 
     // Find a card reader, connect to the first one we do.
     let ctx = pcsc::Context::establish(pcsc::Scope::User)?;
