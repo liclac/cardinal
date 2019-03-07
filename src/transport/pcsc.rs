@@ -2,6 +2,7 @@ use crate::core::apdu;
 use crate::errors::Result;
 use crate::transport::protocol::{Protocol, APDU};
 use crate::transport::Transport;
+use log::trace;
 
 pub const DEFAULT_MAX_LE: usize = 256;
 
@@ -30,7 +31,7 @@ impl Transport for PCSC {
             Some(v) => v,
             None => 256,
         };
-        debug!(
+        trace!(
             ">> SEND: CLA={:#x} INS={:#x} P1={:#x} P2={:#x} Lc={:} Le={:} DATA={:x?}",
             req.cla,
             req.ins,
@@ -42,14 +43,14 @@ impl Transport for PCSC {
         );
 
         let req_data = self.proto.serialize_req(req)?;
-        debug!(">> SEND: RAW={:x?}", req_data);
+        trace!(">> SEND: RAW={:x?}", req_data);
 
         let mut res_buf = [0; pcsc::MAX_BUFFER_SIZE];
         let res_data = self.card.transmit(req_data.as_slice(), &mut res_buf)?;
-        debug!("<< RECV: RAW={:x?}", res_data);
+        trace!("<< RECV: RAW={:x?}", res_data);
 
         let res = self.proto.deserialize_res(res_data)?;
-        debug!(
+        trace!(
             "<< RECV: SW1={:#x} SW2={:#x} DATA={:x?}",
             res.status.sw1(),
             res.status.sw2(),
