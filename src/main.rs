@@ -1,4 +1,4 @@
-use cardinal::adapters::emv;
+use cardinal::apps::emv;
 use cardinal::card::Card;
 use cardinal::errors::Result;
 use cardinal::transport::PCSC;
@@ -44,9 +44,10 @@ fn run() -> Result<()> {
         scard.get_attribute(pcsc::Attribute::AtrString, &mut buf)?,
     );
 
-    // List applications on the card!
     let transport = PCSC::new(scard);
     let card = Card::new(&transport);
+
+    // List EMV applications on the card!
     let emv_dir = emv::Directory::select(&card)?;
     println!("{:#x?}", emv_dir.selection);
     for entry in emv_dir.records() {

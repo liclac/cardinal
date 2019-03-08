@@ -1,4 +1,4 @@
-use crate::adapters::emv::AppDef;
+use crate::apps::emv::AppDef;
 use crate::ber;
 use crate::card::card::Card;
 use crate::card::commands::Record;
