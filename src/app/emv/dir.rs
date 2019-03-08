@@ -4,7 +4,7 @@ use crate::ber;
 use crate::card::Card;
 use crate::cmd::Response;
 use crate::errors::{Error, ErrorKind, Result};
-use crate::refs::{FileID, RecordRef};
+use crate::refs::{FileRef, RecordRef};
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -14,8 +14,8 @@ pub struct Directory<'a> {
 }
 
 impl<'a> Directory<'a> {
-    pub fn id() -> FileID {
-        FileID::Name("1PAY.SYS.DDF01".into())
+    pub fn id() -> FileRef {
+        FileRef::Name("1PAY.SYS.DDF01".into())
     }
 
     pub fn select(card: &'a Card<'a>) -> Result<Self> {
@@ -218,7 +218,7 @@ impl Entry {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct AppDef {
-    pub adf_id: Option<FileID>, // Always a Name.
+    pub adf_id: Option<FileRef>, // Always a Name.
     pub app_label: Option<String>,
     pub app_preferred_name: Option<String>,
     pub app_priority: Vec<u8>,
@@ -232,7 +232,7 @@ impl AppDef {
         for tvr in ber::iter(&data) {
             match tvr? {
                 (0x4F, value) => {
-                    def.adf_id = Some(FileID::Name(value.to_vec()));
+                    def.adf_id = Some(FileRef::Name(value.to_vec()));
                 }
                 (0x50, value) => {
                     def.app_label = Some(String::from_utf8(value.to_vec())?);

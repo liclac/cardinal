@@ -6,7 +6,7 @@ use crate::apdu;
 use crate::app::App;
 use crate::cmd::{Request, Response};
 use crate::errors::Result;
-use crate::refs::{FileID, RecordRef};
+use crate::refs::{FileRef, RecordRef};
 use crate::transport::Transport;
 
 // Magical trait which implements card-like functionality on a transport. You probably
@@ -28,7 +28,7 @@ impl<'a> Card<'a> {
 
     // Execute a SELECT command.
     // TODO: Iterator form of this.
-    pub fn select<'f, T: App<'a>>(&'a self, file: &'f FileID) -> Result<T> {
+    pub fn select<'f, T: App<'a>>(&'a self, file: &'f FileRef) -> Result<T> {
         Ok(T::with(self, self.call(&select::Select::new(&file))?))
     }
 

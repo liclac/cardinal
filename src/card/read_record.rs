@@ -51,7 +51,7 @@ mod tests {
 
     #[test]
     fn test_data_number() {
-        let (p1, p2, data) = ReadRecord::num(1, 1).data();
+        let (p1, p2, data) = ReadRecord::<()>::num(1, 1).data();
         assert_eq!(p1, 0x01);
         assert_eq!(p2, 0b00001100);
         assert_eq!(data, vec![]);
