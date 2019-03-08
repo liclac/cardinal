@@ -1,3 +1,4 @@
+use crate::adapters::emv::AppDef;
 use crate::ber;
 use crate::card::card::Card;
 use crate::card::commands::Record;
@@ -5,9 +6,10 @@ use crate::card::interface::Interface;
 use crate::core::apdu;
 use crate::core::command::Response;
 use crate::core::file::FileID;
-use crate::errors::Result;
+use crate::errors::{Error, ErrorKind, Result};
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct Directory<'a> {
     pub card: &'a Card<'a>,
     pub selection: DirectorySelectResponse,
@@ -22,19 +24,20 @@ impl<'a> Directory<'a> {
         card.select::<Self>(&Self::id())
     }
 
+    pub fn sfi(&self) -> Option<u8> {
+        self.selection.fci_template.as_ref().and_then(|ft| {
+            ft.fci_proprietary_template
+                .as_ref()
+                .and_then(|fpt| fpt.sfi_of_directory_ef)
+        })
+    }
+
     pub fn record_num(&self, num: u8) -> Result<Record> {
-        Ok(Record::num(
-            self.selection
-                .fci_template
-                .as_ref()
-                .ok_or("EMV directory has no FCI Template")?
-                .fci_proprietary_template
-                .as_ref()
-                .ok_or("FCI Template has no FCI Proprietary Template")?
-                .sfi_of_directory_ef
-                .ok_or("FCI Proprietary Template has no Directory SFI")?,
-            num,
-        ))
+        Ok(Record::num(self.sfi().ok_or("Directory has no SFI")?, num))
+    }
+
+    pub fn records(&self) -> DirectoryRecordIterator {
+        DirectoryRecordIterator::new(self)
     }
 }
 
@@ -117,6 +120,96 @@ impl DirectoryFCIPropT {
                     v.extra.insert(tag, value.into());
                 }
             }
+        }
+        Ok(v)
+    }
+}
+
+pub struct DirectoryRecordIterator<'a> {
+    dir: &'a Directory<'a>,
+    num: u8,
+    terminate: bool,
+}
+
+impl<'a> DirectoryRecordIterator<'a> {
+    pub fn new(dir: &'a Directory<'a>) -> Self {
+        DirectoryRecordIterator {
+            dir,
+            num: 1,
+            terminate: false,
+        }
+    }
+
+    fn read(&self) -> Result<DirectoryRecord> {
+        self.dir.read_record(self.dir.record_num(self.num)?)
+    }
+}
+
+impl<'a> Iterator for DirectoryRecordIterator<'a> {
+    type Item = Result<DirectoryRecord>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.terminate {
+            return None;
+        }
+
+        let val = match self.read() {
+            // Assuming all records exist in sequence, terminate the iterator on the
+            // first nonexistent record. Can add a flag to not do this if not desired.
+            Err(Error(ErrorKind::StatusError(apdu::Status::ErrRecordNotFound), _)) => None,
+            // Terminate immediately after the first error.
+            v @ Err(_) => {
+                self.terminate = true;
+                Some(v)
+            }
+            v => Some(v),
+        };
+        self.num += 1;
+        val
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct DirectoryRecord {
+    pub entries: Vec<DirectoryEntry>,
+    pub extra: HashMap<u32, Vec<u8>>,
+}
+
+impl Response for DirectoryRecord {
+    fn from_apdu(res: apdu::Response) -> Result<Self> {
+        let mut v = Self::default();
+        for tvr in ber::iter(&res.data) {
+            match tvr? {
+                (0x70, data) => {
+                    v.entries.push(DirectoryEntry::from_bytes(data)?);
+                }
+                (tag, value) => {
+                    v.extra.insert(tag, value.into());
+                }
+            };
+        }
+        Ok(v)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct DirectoryEntry {
+    pub apps: Vec<AppDef>,
+    pub extra: HashMap<u32, Vec<u8>>,
+}
+
+impl DirectoryEntry {
+    fn from_bytes(data: &[u8]) -> Result<Self> {
+        let mut v = Self::default();
+        for tvr in ber::iter(&data) {
+            match tvr? {
+                (0x61, data) => {
+                    v.apps.push(AppDef::from_bytes(data)?);
+                }
+                (tag, value) => {
+                    v.extra.insert(tag, value.into());
+                }
+            };
         }
         Ok(v)
     }
