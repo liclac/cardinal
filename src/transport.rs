@@ -5,7 +5,7 @@ pub mod protocol;
 pub use self::pcsc::PCSC;
 
 use crate::apdu::{Request, Response, Status};
-use crate::cmd::get_response::GetResponse;
+use crate::card::get_response::GetResponse;
 use crate::cmd::Request as _;
 use crate::errors::{ErrorKind, Result};
 use log::debug;

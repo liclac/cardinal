@@ -1,12 +1,12 @@
 use crate::apdu;
-use crate::apps::emv::AppDef;
+use crate::app::emv::AppDef;
+use crate::app::App;
 use crate::ber;
+use crate::card::read_record::Record;
 use crate::card::Card;
-use crate::cmd::read_record::Record;
 use crate::cmd::Response;
 use crate::errors::{Error, ErrorKind, Result};
 use crate::file::FileID;
-use crate::interface::Interface;
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -41,7 +41,7 @@ impl<'a> Directory<'a> {
     }
 }
 
-impl<'a> Interface<'a> for Directory<'a> {
+impl<'a> App<'a> for Directory<'a> {
     type SelectResponse = DirectorySelectResponse;
 
     fn with(card: &'a Card<'a>, selection: Self::SelectResponse) -> Self {
@@ -141,7 +141,7 @@ impl<'a> DirectoryRecordIterator<'a> {
     }
 
     fn read(&self) -> Result<DirectoryRecord> {
-        self.dir.read_record(self.dir.record_num(self.num)?)
+        self.dir.card().read_record(self.dir.record_num(self.num)?)
     }
 }
 

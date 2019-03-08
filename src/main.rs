@@ -1,4 +1,4 @@
-use cardinal::apps::emv;
+use cardinal::app::emv;
 use cardinal::card::Card;
 use cardinal::errors::Result;
 use cardinal::transport::PCSC;
