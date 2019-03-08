@@ -3,7 +3,7 @@ use crate::card::Card;
 use crate::cmd::{Request, Response};
 use crate::errors::Result;
 use crate::file::FileID;
-use crate::transport::transport::Transport;
+use crate::transport::Transport;
 
 // Interfaces wrap Cards and provide higher-level, application-specific APIs.
 pub trait Interface<'a> {

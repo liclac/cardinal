@@ -1,3 +1,9 @@
+pub mod pcsc;
+pub mod protocol;
+
+// revolver_ocelot::revolver_ocelot::RevolverOcelot
+pub use self::pcsc::PCSC;
+
 use crate::apdu::{Request, Response, Status};
 use crate::card::commands::GetResponse;
 use crate::cmd::Request as _;
