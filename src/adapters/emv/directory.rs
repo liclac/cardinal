@@ -52,7 +52,7 @@ impl<'a> Interface<'a> for Directory<'a> {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DirectorySelectResponse {
-    pub fci_template: Option<FCITemplate>,
+    pub fci_template: Option<DirectoryFCIT>,
     pub extra: HashMap<u32, Vec<u8>>,
 }
 
@@ -62,7 +62,7 @@ impl Response for DirectorySelectResponse {
         for tvr in ber::iter(&res.data) {
             let (tag, value) = tvr?;
             match tag {
-                0x6F => v.fci_template = Some(FCITemplate::from_bytes(value)?),
+                0x6F => v.fci_template = Some(DirectoryFCIT::from_bytes(value)?),
                 _ => {
                     v.extra.insert(tag, value.into());
                 }
@@ -73,22 +73,20 @@ impl Response for DirectorySelectResponse {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct FCITemplate {
+pub struct DirectoryFCIT {
     pub df_name: Option<String>,
-    pub fci_proprietary_template: Option<FCIProprietaryTemplate>,
+    pub fci_proprietary_template: Option<DirectoryFCIPropT>,
     pub extra: HashMap<u32, Vec<u8>>,
 }
 
-impl FCITemplate {
+impl DirectoryFCIT {
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
-        let mut v = FCITemplate::default();
+        let mut v = DirectoryFCIT::default();
         for tvr in ber::iter(data) {
             let (tag, value) = tvr?;
             match tag {
                 0x84 => v.df_name = Some(String::from_utf8(value.to_vec())?),
-                0xA5 => {
-                    v.fci_proprietary_template = Some(FCIProprietaryTemplate::from_bytes(value)?)
-                }
+                0xA5 => v.fci_proprietary_template = Some(DirectoryFCIPropT::from_bytes(value)?),
                 _ => {
                     v.extra.insert(tag, value.into());
                 }
@@ -99,14 +97,14 @@ impl FCITemplate {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct FCIProprietaryTemplate {
+pub struct DirectoryFCIPropT {
     pub sfi_of_directory_ef: Option<u8>,
     pub lang_pref: Option<String>,
     pub issuer_code_table_idx: Option<Vec<u8>>,
     pub extra: HashMap<u32, Vec<u8>>,
 }
 
-impl FCIProprietaryTemplate {
+impl DirectoryFCIPropT {
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let mut v = Self::default();
         for tvr in ber::iter(data) {
