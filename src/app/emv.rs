@@ -1,5 +1,3 @@
-pub mod adf;
-pub mod directory;
+pub mod dir;
 
-pub use self::adf::*;
-pub use self::directory::*;
+pub use self::dir::Directory;

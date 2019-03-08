@@ -7,5 +7,5 @@ pub mod ber;
 pub mod card;
 pub mod cmd;
 pub mod errors;
-pub mod file;
+pub mod refs;
 pub mod transport;

@@ -1,5 +1,5 @@
 use crate::cmd::{Request, Response};
-use crate::file::FileID;
+use crate::refs::FileID;
 
 // A SELECT command can select the first, last, next or previous occurrence of an ID.
 // Normally, what you want is the first; we should build an iterator API around the rest.

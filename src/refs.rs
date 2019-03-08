@@ -36,3 +36,14 @@ impl Into<Vec<u8>> for FileID {
         }
     }
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum RecordRef {
+    Number { sfi: u8, num: u8 },
+}
+
+impl RecordRef {
+    pub fn num(sfi: u8, num: u8) -> RecordRef {
+        RecordRef::Number { sfi, num }
+    }
+}
