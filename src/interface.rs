@@ -1,5 +1,6 @@
-use crate::card::commands::{ReadRecord, Record, Select};
 use crate::card::Card;
+use crate::cmd::read_record::{ReadRecord, Record};
+use crate::cmd::select::Select;
 use crate::cmd::{Request, Response};
 use crate::errors::Result;
 use crate::file::FileID;

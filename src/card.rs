@@ -1,5 +1,3 @@
-pub mod commands;
-
 use crate::apdu::{Request, Response};
 use crate::errors::Result;
 use crate::interface::Interface;

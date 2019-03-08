@@ -1,8 +1,8 @@
 use crate::apdu;
 use crate::apps::emv::AppDef;
 use crate::ber;
-use crate::card::commands::Record;
 use crate::card::Card;
+use crate::cmd::read_record::Record;
 use crate::cmd::Response;
 use crate::errors::{Error, ErrorKind, Result};
 use crate::file::FileID;
