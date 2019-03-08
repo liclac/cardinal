@@ -1,12 +1,12 @@
+use crate::apdu;
 use crate::apps::emv::AppDef;
 use crate::ber;
 use crate::card::card::Card;
 use crate::card::commands::Record;
 use crate::card::interface::Interface;
-use crate::core::apdu;
-use crate::core::command::Response;
-use crate::core::file::FileID;
+use crate::cmd::Response;
 use crate::errors::{Error, ErrorKind, Result};
+use crate::file::FileID;
 use std::collections::HashMap;
 
 #[derive(Clone)]

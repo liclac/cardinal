@@ -1,4 +1,5 @@
-use crate::core::{FileID, Request, Response};
+use crate::cmd::{Request, Response};
+use crate::file::FileID;
 
 // A SELECT command can select the first, last, next or previous occurrence of an ID.
 // Normally, what you want is the first; we should build an iterator API around the rest.
@@ -80,7 +81,9 @@ impl<'a, RetT: Response> Request for Select<'a, RetT> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{apdu, FileID, Request};
+    use crate::apdu;
+    use crate::cmd::Request;
+    use crate::file::FileID;
 
     #[test]
     fn test_select_cirrus() {

@@ -1,8 +1,8 @@
 use crate::card::commands::{ReadRecord, Record, Select};
 use crate::card::Card;
-use crate::core::command::{Request, Response};
-use crate::core::file::FileID;
+use crate::cmd::{Request, Response};
 use crate::errors::Result;
+use crate::file::FileID;
 use crate::transport::transport::Transport;
 
 // Interfaces wrap Cards and provide higher-level, application-specific APIs.

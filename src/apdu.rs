@@ -1,4 +1,4 @@
-use crate::core::command;
+use crate::cmd;
 use crate::errors::Result;
 use std::convert::Into;
 use std::fmt;
@@ -36,7 +36,7 @@ impl Request {
     }
 }
 
-impl command::Request for Request {
+impl cmd::Request for Request {
     type Returns = Response;
 
     fn cla(&self) -> u8 {
@@ -69,7 +69,7 @@ impl Response {
     }
 }
 
-impl command::Response for Response {
+impl cmd::Response for Response {
     fn from_apdu(res: Response) -> Result<Self> {
         Ok(res)
     }

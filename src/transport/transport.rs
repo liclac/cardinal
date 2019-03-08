@@ -1,6 +1,6 @@
+use crate::apdu::{Request, Response, Status};
 use crate::card::commands::GetResponse;
-use crate::core::apdu::{Request, Response, Status};
-use crate::core::command::Request as _;
+use crate::cmd::Request as _;
 use crate::errors::{ErrorKind, Result};
 use log::debug;
 

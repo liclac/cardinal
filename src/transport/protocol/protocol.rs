@@ -1,4 +1,4 @@
-use crate::core::apdu;
+use crate::apdu;
 use crate::errors::Result;
 
 pub trait Protocol {

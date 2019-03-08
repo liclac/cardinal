@@ -1,6 +1,6 @@
 use crate::ber;
-use crate::core::FileID;
 use crate::errors::Result;
+use crate::file::FileID;
 use std::collections::HashMap;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-use crate::core::apdu;
+use crate::apdu;
 use crate::errors::Result;
 use crate::transport::protocol::Protocol;
 
@@ -47,7 +47,7 @@ impl Protocol for APDU {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::apdu::{Request, Response, Status};
+    use crate::apdu::{Request, Response, Status};
 
     #[test]
     fn test_serialize_req() {

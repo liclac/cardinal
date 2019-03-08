@@ -1,5 +1,5 @@
+use crate::apdu::{Request, Response};
 use crate::card::interface::Interface;
-use crate::core::apdu::{Request, Response};
 use crate::errors::Result;
 use crate::transport::Transport;
 

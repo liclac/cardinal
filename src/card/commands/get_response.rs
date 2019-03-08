@@ -1,4 +1,4 @@
-use crate::core::{Request, Response};
+use crate::cmd::{Request, Response};
 use std::marker::PhantomData;
 
 pub struct GetResponse<RT: Response> {

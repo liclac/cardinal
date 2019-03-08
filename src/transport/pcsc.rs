@@ -1,4 +1,4 @@
-use crate::core::apdu;
+use crate::apdu;
 use crate::errors::Result;
 use crate::transport::protocol::{Protocol, APDU};
 use crate::transport::Transport;

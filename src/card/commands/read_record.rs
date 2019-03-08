@@ -1,4 +1,4 @@
-use crate::core::{Request, Response};
+use crate::cmd::{Request, Response};
 use std::marker::PhantomData;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

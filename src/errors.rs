@@ -1,6 +1,6 @@
 #![allow(deprecated)]
 
-use crate::core::apdu::Status;
+use crate::apdu::Status;
 use error_chain::error_chain;
 
 error_chain! {
