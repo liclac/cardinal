@@ -1,4 +1,5 @@
 use crate::errors::Result;
+use std::collections::HashMap;
 
 // Reads a byte from a buffer, and moves the pointer ahead one byte.
 fn nom(buf: &mut &[u8]) -> Result<u8> {
@@ -96,6 +97,17 @@ impl<'a> Iterator for Iter<'a> {
             Some(read_tlv(&mut self.buf))
         }
     }
+}
+
+pub type Map = HashMap<u32, Vec<u8>>;
+
+pub fn to_map<'a>(buf: &'a [u8]) -> Result<Map> {
+    let mut map = Map::new();
+    for tvr in iter(buf) {
+        let (tag, value) = tvr?;
+        map.insert(tag, value.into());
+    }
+    Ok(map)
 }
 
 #[cfg(test)]
