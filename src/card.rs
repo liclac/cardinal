@@ -1,6 +1,8 @@
+pub mod commands;
+
 use crate::apdu::{Request, Response};
-use crate::card::interface::Interface;
 use crate::errors::Result;
+use crate::interface::Interface;
 use crate::transport::Transport;
 
 // Magical trait which implements card-like functionality on a transport. You probably
