@@ -5,6 +5,7 @@ use crate::card::Card;
 use crate::cmd::Response;
 use crate::errors::{Error, ErrorKind, Result};
 use crate::refs::{FileRef, RecordRef};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -54,7 +55,7 @@ impl<'a> App<'a> for Directory<'a> {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct Selection {
     pub fci: Option<FCI>,
     pub extra: HashMap<u32, Vec<u8>>,
@@ -76,7 +77,7 @@ impl Response for Selection {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct FCI {
     pub df_name: Option<String>,
     pub fci_proprietary: Option<FCIProprietary>,
@@ -100,7 +101,7 @@ impl FCI {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct FCIProprietary {
     pub sfi_of_directory_ef: Option<u8>,
     pub lang_pref: Option<String>,
@@ -170,7 +171,7 @@ impl<'a> Iterator for RecordIterator<'a> {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct Record {
     pub entries: Vec<Entry>,
     pub extra: HashMap<u32, Vec<u8>>,
@@ -193,7 +194,7 @@ impl Response for Record {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct Entry {
     pub apps: Vec<AppDef>,
     pub extra: HashMap<u32, Vec<u8>>,
@@ -216,7 +217,7 @@ impl Entry {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct AppDef {
     pub adf_id: Option<FileRef>, // Always a Name.
     pub app_label: Option<String>,

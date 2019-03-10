@@ -4,6 +4,7 @@ use cardinal::errors::Result;
 use cardinal::transport::PCSC;
 use error_chain::quick_main;
 use log::{debug, info};
+use ron;
 use std::fs::File;
 
 quick_main!(run);
@@ -19,6 +20,11 @@ fn init_logging() -> Result<()> {
         ),
     ])?;
     Ok(())
+}
+
+fn serialize<T: serde::Serialize>(v: T) -> Result<String> {
+    let cfg = ron::ser::PrettyConfig::default();
+    Ok(ron::ser::to_string_pretty(&v, cfg)?)
 }
 
 fn run() -> Result<()> {
@@ -49,9 +55,9 @@ fn run() -> Result<()> {
 
     // List EMV applications on the card!
     let emv_dir = emv::Directory::select(&card)?;
-    println!("{:#x?}", emv_dir.selection);
+    info!("{:}", serialize(&emv_dir.selection)?);
     for entry in emv_dir.records() {
-        info!("{:#x?}", entry?);
+        info!("{:}", serialize(&entry?)?);
     }
 
     Ok(())

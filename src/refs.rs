@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 // Describes a reference to a file ID, either an EF's filename, a DF's AID, or the
 // MF (Master File/Root).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum FileRef {
     Name(Vec<u8>), // File name, eg. '1PAY.SYS.DDF01'.
 }
@@ -25,7 +27,7 @@ impl Into<Vec<u8>> for FileRef {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
 pub enum RecordRef {
     Number { sfi: u8, num: u8 },
 }
