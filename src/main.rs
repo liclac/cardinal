@@ -12,7 +12,7 @@ quick_main!(run);
 fn init_logging() -> Result<()> {
     let logcfg = simplelog::Config::default();
     simplelog::CombinedLogger::init(vec![
-        simplelog::TermLogger::new(simplelog::LevelFilter::Info, logcfg).unwrap(),
+        simplelog::TermLogger::new(simplelog::LevelFilter::Debug, logcfg).unwrap(),
         simplelog::WriteLogger::new(
             simplelog::LevelFilter::Trace,
             logcfg,
