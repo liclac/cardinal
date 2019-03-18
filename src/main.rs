@@ -52,16 +52,22 @@ fn run() -> Result<()> {
     let transport = PCSC::new(scard);
     let card = Card::new(&transport);
 
-    // List EMV applications on the card!
+    // Select the EMV Directory; TODO: Fallbacks when this isn't supported.
     let emv_dir = emv::Directory::select(&card)?;
     info!("{:}", serialize(&emv_dir.selection)?);
+
+    // Grab and print its records; this explodes if any of them couldn't be read.
     let emv_dir_recs = emv_dir.records().collect::<Result<Vec<_>>>()?;
     for (ie, e) in emv_dir_recs.iter().enumerate() {
         info!("{:}", serialize(&e)?);
 
+        // Each Record contains one or more entries, which can describe one or more
+        // applications/files. This makes no sense, but ~sacred legacy behaviour~.
         for (ientry, entry) in e.entries.iter().enumerate() {
             for (iappdef, appdef) in entry.apps.iter().enumerate() {
+                // TODO: Is there a nicer way to warn on nonexistent ADF IDs...?
                 if let Some(id) = &appdef.adf_id {
+                    // Select the application! TODO: Query it directly for more data.
                     let emv_app = emv::ADF::select(&card, id)?;
                     info!("{:}", serialize(&emv_app.selection)?);
                 } else {
