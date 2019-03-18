@@ -3,8 +3,8 @@ use cardinal::card::Card;
 use cardinal::errors::Result;
 use cardinal::transport::PCSC;
 use error_chain::quick_main;
-use log::{debug, info};
-use ron;
+use log::{debug, info, warn};
+use std::fmt::Debug;
 use std::fs::File;
 
 quick_main!(run);
@@ -22,9 +22,8 @@ fn init_logging() -> Result<()> {
     Ok(())
 }
 
-fn serialize<T: serde::Serialize>(v: T) -> Result<String> {
-    let cfg = ron::ser::PrettyConfig::default();
-    Ok(ron::ser::to_string_pretty(&v, cfg)?)
+fn serialize<T: serde::Serialize + Debug>(v: &T) -> Result<String> {
+    Ok(format!("{:#X?}", v))
 }
 
 fn run() -> Result<()> {
@@ -56,8 +55,23 @@ fn run() -> Result<()> {
     // List EMV applications on the card!
     let emv_dir = emv::Directory::select(&card)?;
     info!("{:}", serialize(&emv_dir.selection)?);
-    for entry in emv_dir.records() {
-        info!("{:}", serialize(&entry?)?);
+    let emv_dir_recs = emv_dir.records().collect::<Result<Vec<_>>>()?;
+    for (ie, e) in emv_dir_recs.iter().enumerate() {
+        info!("{:}", serialize(&e)?);
+
+        for (ientry, entry) in e.entries.iter().enumerate() {
+            for (iappdef, appdef) in entry.apps.iter().enumerate() {
+                if let Some(id) = &appdef.adf_id {
+                    let emv_app = emv::ADF::select(&card, id)?;
+                    info!("{:}", serialize(&emv_app.selection)?);
+                } else {
+                    warn!(
+                        "emv::Directory.records[{:}].entries[{:}].apps[{:}]: has no ADF ID",
+                        ie, ientry, iappdef
+                    );
+                }
+            }
+        }
     }
 
     Ok(())
