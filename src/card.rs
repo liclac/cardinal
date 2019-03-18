@@ -8,6 +8,7 @@ use crate::cmd::{Request, Response};
 use crate::errors::Result;
 use crate::refs::{FileRef, RecordRef};
 use crate::transport::Transport;
+use log::debug;
 
 // Magical trait which implements card-like functionality on a transport. You probably
 // want to put this on your transport(s) and most of your adapters, unless the adapter
@@ -29,6 +30,7 @@ impl<'a> Card<'a> {
     // Execute a SELECT command.
     // TODO: Iterator form of this.
     pub fn select<'f, T: App<'a>>(&'a self, file: &'f FileRef) -> Result<T> {
+        debug!("SELECT {:x?}", file);
         Ok(T::with(self, self.call(&select::Select::new(&file))?))
     }
 

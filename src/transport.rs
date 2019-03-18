@@ -8,7 +8,7 @@ use crate::apdu::{Request, Response, Status};
 use crate::card::get_response::GetResponse;
 use crate::cmd::Request as _;
 use crate::errors::{ErrorKind, Result};
-use log::debug;
+use log::trace;
 
 pub trait Transport {
     // Performs a raw APDU. As a user, you probably want call_apdu(), not this.
@@ -24,12 +24,12 @@ pub trait Transport {
             Status::OK => Ok(res),
             Status::BytesRemaining(le) => {
                 // T=0: If Le is wrong, issue a GET RESPONSE to get the full thing.
-                debug!("== RESP: GET RESPONSE with CLA={} Le={:}", req.cla, le);
+                trace!("== RESP: GET RESPONSE with CLA={} Le={:}", req.cla, le);
                 self.call_apdu(GetResponse::<()>::new(req.cla, le).to_apdu()?)
             }
             Status::ErrRetryWithLe(le) => {
                 // T=1: If Le is wrong, retry it with the correct one.
-                debug!("== RETR: Retrying with Le={:}", le);
+                trace!("== RETR: Retrying with Le={:}", le);
                 self.call_apdu(req.expect(le as usize))
             }
             _ => Err(ErrorKind::StatusError(res.status).into()),
