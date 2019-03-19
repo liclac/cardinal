@@ -9,3 +9,5 @@ pub mod cmd;
 pub mod errors;
 pub mod refs;
 pub mod transport;
+
+pub mod hexjson;

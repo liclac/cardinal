@@ -1,9 +1,11 @@
 use cardinal::app::emv;
 use cardinal::card::Card;
 use cardinal::errors::Result;
+use cardinal::hexjson::HexFormatter;
 use cardinal::transport::PCSC;
 use error_chain::quick_main;
 use log::{debug, info, warn};
+use serde_json;
 use std::fmt::Debug;
 use std::fs::File;
 
@@ -23,7 +25,13 @@ fn init_logging() -> Result<()> {
 }
 
 fn serialize<T: serde::Serialize + Debug>(v: &T) -> Result<String> {
-    Ok(format!("{:#X?}", v))
+    // Wrap the built-in pretty-printing JSON formatter in our own formatter,
+    // which just formats numbers as hexadecimal instead of decimal.
+    let mut buf = Vec::with_capacity(128);
+    let fmt = HexFormatter::new(serde_json::ser::PrettyFormatter::new());
+    let mut ser = serde_json::Serializer::with_formatter(&mut buf, fmt);
+    v.serialize(&mut ser)?;
+    Ok(String::from_utf8(buf)?)
 }
 
 fn run() -> Result<()> {
