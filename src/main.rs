@@ -8,6 +8,7 @@ use error_chain::quick_main;
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use serde_json::ser::{Formatter, PrettyFormatter};
 use std::fmt::Debug;
 use std::fs::File;
 
@@ -17,6 +18,7 @@ cardinal - embr's smartcard toy.
 Usage: cardinal [options]
 
 Options:
+    --decimal           Format bytes as decimal instead of hex.
     --trace FILE        Log trace output to FILE.
     -v --verbose        Enable debug logging.
     --help              Show this message.
@@ -24,8 +26,9 @@ Options:
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Args {
-    flag_verbose: bool,
+    flag_decimal: bool,
     flag_trace: Option<String>,
+    flag_verbose: bool,
 }
 
 fn init_args<T: IntoIterator<Item = S>, S: AsRef<str>>(argv: T) -> Result<Args> {
@@ -88,12 +91,12 @@ fn run() -> Result<()> {
 
     // Select the EMV Directory; TODO: Fallbacks when this isn't supported.
     let emv_dir = emv::Directory::select(&card)?;
-    info!("{:}", serialize(&emv_dir.selection)?);
+    info!("{:}", serialize(&args, &emv_dir.selection)?);
 
     // Grab and print its records; this explodes if any of them couldn't be read.
     let emv_dir_recs = emv_dir.records().collect::<Result<Vec<_>>>()?;
     for (ie, e) in emv_dir_recs.iter().enumerate() {
-        info!("{:}", serialize(&e)?);
+        info!("{:}", serialize(&args, &e)?);
 
         // Each Record contains one or more entries, which can describe one or more
         // applications/files. This makes no sense, but ~sacred legacy behaviour~.
@@ -103,7 +106,7 @@ fn run() -> Result<()> {
                 if let Some(id) = &appdef.adf_id {
                     // Select the application! TODO: Query it directly for more data.
                     let emv_app = emv::ADF::select(&card, id)?;
-                    info!("{:}", serialize(&emv_app.selection)?);
+                    info!("{:}", serialize(&args, &emv_app.selection)?);
                 } else {
                     warn!(
                         "emv::Directory.records[{:}].entries[{:}].apps[{:}]: has no ADF ID",
@@ -117,11 +120,19 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-fn serialize<T: Serialize + Debug>(v: &T) -> Result<String> {
+fn serialize<T: Serialize + Debug>(args: &Args, v: &T) -> Result<String> {
     // Wrap the built-in pretty-printing JSON formatter in our own formatter,
     // which just formats numbers as hexadecimal instead of decimal.
+    let fmt = PrettyFormatter::new();
+    if args.flag_decimal {
+        to_string_fmt(fmt, v)
+    } else {
+        to_string_fmt(HexFormatter::new(fmt), v)
+    }
+}
+
+fn to_string_fmt<T: Serialize + Debug, F: Formatter>(fmt: F, v: &T) -> Result<String> {
     let mut buf = Vec::with_capacity(128);
-    let fmt = HexFormatter::new(serde_json::ser::PrettyFormatter::new());
     let mut ser = serde_json::Serializer::with_formatter(&mut buf, fmt);
     v.serialize(&mut ser)?;
     Ok(String::from_utf8(buf)?)
