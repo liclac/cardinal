@@ -3,39 +3,65 @@ use cardinal::card::Card;
 use cardinal::errors::Result;
 use cardinal::hexjson::HexFormatter;
 use cardinal::transport::PCSC;
+use docopt::Docopt;
 use error_chain::quick_main;
 use log::{debug, info, warn};
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fmt::Debug;
 use std::fs::File;
 
-quick_main!(run);
+const USAGE: &'static str = "
+cardinal - embr's smartcard toy.
 
-fn init_logging() -> Result<()> {
+Usage: cardinal [options]
+
+Options:
+    --trace FILE        Log trace output to FILE.
+    -v --verbose        Enable debug logging.
+    --help              Show this message.
+";
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Args {
+    flag_verbose: bool,
+    flag_trace: Option<String>,
+}
+
+fn init_args<T: IntoIterator<Item = S>, S: AsRef<str>>(argv: T) -> Result<Args> {
+    Ok(Docopt::new(USAGE)?.argv(argv).deserialize()?)
+}
+
+fn init_logging(args: &Args) -> Result<()> {
     let logcfg = simplelog::Config::default();
-    simplelog::CombinedLogger::init(vec![
-        simplelog::TermLogger::new(simplelog::LevelFilter::Debug, logcfg).unwrap(),
-        simplelog::WriteLogger::new(
+    let level = if args.flag_verbose {
+        simplelog::LevelFilter::Debug
+    } else {
+        simplelog::LevelFilter::Info
+    };
+
+    // We always want to log to the terminal, we may want to add other loggers.
+    let mut loggers: Vec<Box<simplelog::SharedLogger>> =
+        vec![simplelog::TermLogger::new(level, logcfg).unwrap()];
+
+    // If a trace file is specified, clobber and log traces to it.
+    if let Some(trace_file) = args.flag_trace.as_ref() {
+        loggers.push(simplelog::WriteLogger::new(
             simplelog::LevelFilter::Trace,
             logcfg,
-            File::create("cardinal_trace.log")?,
-        ),
-    ])?;
+            File::create(trace_file)?,
+        ));
+    }
+
+    simplelog::CombinedLogger::init(loggers)?;
     Ok(())
 }
 
-fn serialize<T: serde::Serialize + Debug>(v: &T) -> Result<String> {
-    // Wrap the built-in pretty-printing JSON formatter in our own formatter,
-    // which just formats numbers as hexadecimal instead of decimal.
-    let mut buf = Vec::with_capacity(128);
-    let fmt = HexFormatter::new(serde_json::ser::PrettyFormatter::new());
-    let mut ser = serde_json::Serializer::with_formatter(&mut buf, fmt);
-    v.serialize(&mut ser)?;
-    Ok(String::from_utf8(buf)?)
-}
+quick_main!(run);
 
 fn run() -> Result<()> {
-    init_logging()?;
+    let args = init_args(std::env::args())?;
+    init_logging(&args)?;
 
     // Find a card reader, connect to the first one we do.
     let ctx = pcsc::Context::establish(pcsc::Scope::User)?;
@@ -89,4 +115,14 @@ fn run() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn serialize<T: Serialize + Debug>(v: &T) -> Result<String> {
+    // Wrap the built-in pretty-printing JSON formatter in our own formatter,
+    // which just formats numbers as hexadecimal instead of decimal.
+    let mut buf = Vec::with_capacity(128);
+    let fmt = HexFormatter::new(serde_json::ser::PrettyFormatter::new());
+    let mut ser = serde_json::Serializer::with_formatter(&mut buf, fmt);
+    v.serialize(&mut ser)?;
+    Ok(String::from_utf8(buf)?)
 }
