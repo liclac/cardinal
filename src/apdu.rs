@@ -1,10 +1,11 @@
 use crate::cmd;
 use crate::errors::Result;
+use serde::{Deserialize, Serialize};
 use std::convert::Into;
 use std::fmt;
 
 // A raw request APDU.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Request {
     pub cla: u8,       // Class byte.
     pub ins: u8,       // Instruction byte.
@@ -54,7 +55,7 @@ impl cmd::Request for Request {
 }
 
 // A raw response APDU.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Response {
     pub status: Status, // Status code.
     pub data: Vec<u8>,  // Response data.
@@ -75,7 +76,7 @@ impl cmd::Response for Response {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Status {
     OK,                              // 0x9000
     Warning(u8),                     // 0xXX00 - Generic warnings of class x.
