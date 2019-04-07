@@ -89,6 +89,10 @@ fn run() -> Result<()> {
     let transport = PCSC::new(scard);
     let card = Card::new(&transport);
 
+    dump_emv(&args, &card)
+}
+
+fn dump_emv(args: &Args, card: &Card) -> Result<()> {
     // Select the EMV Directory; TODO: Fallbacks when this isn't supported.
     let emv_dir = emv::Directory::select(&card)?;
     info!("{:}", serialize(&args, &emv_dir.selection)?);
