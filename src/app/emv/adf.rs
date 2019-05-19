@@ -1,8 +1,9 @@
 use crate::apdu;
+use crate::app::emv::GetProcessingOptions;
 use crate::app::App;
 use crate::ber;
 use crate::card::Card;
-use crate::cmd::Response;
+use crate::cmd::{Request, Response};
 use crate::errors::Result;
 use crate::refs::FileRef;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,10 @@ pub struct ADF<'a> {
 impl<'a> ADF<'a> {
     pub fn select(card: &'a Card<'a>, id: &FileRef) -> Result<Self> {
         card.select::<Self>(id)
+    }
+
+    pub fn get_processing_options(&self) -> Result<<GetProcessingOptions as Request>::Returns> {
+        self.card.call(&GetProcessingOptions::new())
     }
 }
 

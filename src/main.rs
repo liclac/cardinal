@@ -1,11 +1,14 @@
+mod cli;
+
 use cardinal::app::emv;
 use cardinal::card::Card;
 use cardinal::errors::Result;
 use cardinal::hexjson::HexFormatter;
-use cardinal::transport::PCSC;
+use cli::{Editor, Global};
+// use cardinal::transport::PCSC;
 use docopt::Docopt;
 use error_chain::quick_main;
-use log::{debug, info, warn};
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::ser::{Formatter, PrettyFormatter};
@@ -67,29 +70,31 @@ fn run() -> Result<()> {
     init_logging(&args)?;
 
     // Find a card reader, connect to the first one we do.
-    let ctx = pcsc::Context::establish(pcsc::Scope::User)?;
-    let mut buf: Vec<u8> = Vec::new();
+    // let ctx = pcsc::Context::establish(pcsc::Scope::User)?;
+    // let mut buf: Vec<u8> = Vec::new();
 
-    buf.resize(ctx.list_readers_len()?, 0);
-    let reader = ctx
-        .list_readers(&mut buf)?
-        .next()
-        .expect("No readers connected");
-    debug!("Reader: {:?}", reader);
+    // buf.resize(ctx.list_readers_len()?, 0);
+    // let reader = ctx
+    //     .list_readers(&mut buf)?
+    //     .next()
+    //     .expect("No readers connected");
+    // debug!("Reader: {:?}", reader);
 
-    let scard = ctx.connect(reader, pcsc::ShareMode::Shared, pcsc::Protocols::ANY)?;
+    // let scard = ctx.connect(reader, pcsc::ShareMode::Shared, pcsc::Protocols::ANY)?;
 
-    // Read the ATR from the card. TODO: Parse this.
-    buf.resize(scard.get_attribute_len(pcsc::Attribute::AtrString)?, 0);
-    info!(
-        "ATR: {:X?}",
-        scard.get_attribute(pcsc::Attribute::AtrString, &mut buf)?,
-    );
+    // // Read the ATR from the card. TODO: Parse this.
+    // buf.resize(scard.get_attribute_len(pcsc::Attribute::AtrString)?, 0);
+    // info!(
+    //     "ATR: {:X?}",
+    //     scard.get_attribute(pcsc::Attribute::AtrString, &mut buf)?,
+    // );
 
-    let transport = PCSC::new(scard);
-    let card = Card::new(&transport);
+    // let transport = PCSC::new(scard);
+    // let card = Card::new(&transport);
 
-    dump_emv(&args, &card)
+    // dump_emv(&args, &card)
+
+    Editor::new().run(&Global::new())
 }
 
 fn dump_emv(args: &Args, card: &Card) -> Result<()> {
@@ -111,6 +116,9 @@ fn dump_emv(args: &Args, card: &Card) -> Result<()> {
                     // Select the application! TODO: Query it directly for more data.
                     let emv_app = emv::ADF::select(&card, id)?;
                     info!("{:}", serialize(&args, &emv_app.selection)?);
+
+                // debug!("GET PROCESSING OPTIONS");
+                // info!("{:}", serialize(&args, &emv_app.get_processing_options()?)?);
                 } else {
                     warn!(
                         "emv::Directory.records[{:}].entries[{:}].apps[{:}]: has no ADF ID",
