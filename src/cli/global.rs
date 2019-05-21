@@ -5,6 +5,7 @@ use cardinal::errors::Result;
 #[derive(Default)]
 pub struct Global {
     exit: ExitCommand,
+    help: HelpCommand,
 }
 
 impl Global {
@@ -13,7 +14,7 @@ impl Global {
     }
 }
 
-impl<'a> Scope for Global {
+impl Scope for Global {
     fn parent(&self) -> Option<&Scope> {
         None
     }
@@ -21,11 +22,8 @@ impl<'a> Scope for Global {
         ScopeIterator::new(self)
     }
 
-    fn lookup(&self, name: &str) -> Option<&Command> {
-        match name {
-            "exit" | "quit" | "q" | "wq" => Some(&self.exit),
-            _ => None,
-        }
+    fn commands(&self) -> Vec<&Command> {
+        vec![&self.help, &self.exit]
     }
 }
 
@@ -33,10 +31,33 @@ impl<'a> Scope for Global {
 pub struct ExitCommand {}
 
 impl Command for ExitCommand {
+    fn name(&self) -> &str {
+        "exit"
+    }
     fn usage(&self) -> &str {
         "exit - bye!"
     }
     fn exec<'a>(&self, _scope: &'a Scope, _args: &Vec<String>) -> Result<Option<&'a Scope>> {
         Ok(None)
+    }
+}
+
+#[derive(Default)]
+pub struct HelpCommand {}
+
+impl Command for HelpCommand {
+    fn name(&self) -> &str {
+        "help"
+    }
+    fn usage(&self) -> &str {
+        "help - get help"
+    }
+    fn exec<'a>(&self, scope: &'a Scope, _args: &Vec<String>) -> Result<Option<&'a Scope>> {
+        println!("");
+        for cmd in scope.iter().flat_map(|s| s.commands()) {
+            println!("   {:}", cmd.usage().lines().next().unwrap_or(""));
+        }
+        println!("");
+        Ok(Some(scope))
     }
 }

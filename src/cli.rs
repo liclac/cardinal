@@ -91,11 +91,15 @@ impl<'a> Invocation<'a> {
 }
 
 pub trait Command {
+    fn name(&self) -> &str;
     fn usage(&self) -> &str;
     fn exec<'a>(&self, scope: &'a Scope, args: &Vec<String>) -> Result<Option<&'a Scope>>;
 }
 
 impl Command for () {
+    fn name(&self) -> &str {
+        ""
+    }
     fn usage(&self) -> &str {
         ""
     }
@@ -109,8 +113,16 @@ pub trait Scope {
     fn parent(&self) -> Option<&Scope>;
     // Returns an iterator over self and the chain of parents.
     fn iter(&self) -> ScopeIterator;
-    // Look up a command by name.
-    fn lookup(&self, name: &str) -> Option<&Command>;
+    // Returns an iterator over this scope's "own" commands.
+    fn commands(&self) -> Vec<&Command>;
+
+    // Returns the command with the given name.
+    fn lookup(&self, name: &str) -> Option<&Command> {
+        self.commands()
+            .iter()
+            .find(|c| c.name() == name)
+            .map(|c| *c)
+    }
 }
 
 pub struct ScopeIterator<'a> {
