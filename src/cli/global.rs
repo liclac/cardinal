@@ -35,9 +35,11 @@ impl Command for ExitCommand {
         "exit"
     }
     fn usage(&self) -> &str {
-        "exit - bye!"
+        "bye!
+
+Usage: exit"
     }
-    fn exec<'a>(&self, _scope: &'a Scope, _args: &Vec<String>) -> Result<Option<&'a Scope>> {
+    fn exec<'a>(&self, _scope: &'a Scope, _args: &docopt::Docopt) -> Result<Option<&'a Scope>> {
         Ok(None)
     }
 }
@@ -50,12 +52,18 @@ impl Command for HelpCommand {
         "help"
     }
     fn usage(&self) -> &str {
-        "help - get help"
+        "get help
+
+Usage: help"
     }
-    fn exec<'a>(&self, scope: &'a Scope, _args: &Vec<String>) -> Result<Option<&'a Scope>> {
+    fn exec<'a>(&self, scope: &'a Scope, _args: &docopt::Docopt) -> Result<Option<&'a Scope>> {
         println!("");
         for cmd in scope.iter().flat_map(|s| s.commands()) {
-            println!("   {:}", cmd.usage().lines().next().unwrap_or(""));
+            println!(
+                "   {:} - {:}",
+                cmd.name(),
+                cmd.usage().lines().next().unwrap_or("")
+            );
         }
         println!("");
         Ok(Some(scope))

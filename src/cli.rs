@@ -2,6 +2,7 @@ pub mod global;
 pub use global::Global;
 
 use cardinal::errors::{Error, ErrorKind, Result};
+use docopt::Docopt;
 use log::error;
 use rustyline;
 use shellwords;
@@ -76,7 +77,7 @@ impl<'a> Invocation<'a> {
 
     pub fn exec(&self) -> Result<Option<&'a Scope>> {
         Ok(match self.cmd {
-            Some(cmd) => cmd.exec(self.scope, &self.args)?,
+            Some(cmd) => cmd.call(self.scope, &self.args)?,
             None => Some(self.scope),
         })
     }
@@ -91,9 +92,17 @@ impl<'a> Invocation<'a> {
 }
 
 pub trait Command {
+    // Returns a name for the command.
     fn name(&self) -> &str;
+    // Usage, in docopt format.
     fn usage(&self) -> &str;
-    fn exec<'a>(&self, scope: &'a Scope, args: &Vec<String>) -> Result<Option<&'a Scope>>;
+    // Executes the command!
+    fn exec<'a>(&self, scope: &'a Scope, opts: &docopt::Docopt) -> Result<Option<&'a Scope>>;
+
+    // Executes the command with a list of commandline arguments.
+    fn call<'a>(&self, scope: &'a Scope, args: &Vec<String>) -> Result<Option<&'a Scope>> {
+        self.exec(scope, &(Docopt::new(self.usage())?.help(true).argv(args)))
+    }
 }
 
 impl Command for () {
@@ -103,7 +112,7 @@ impl Command for () {
     fn usage(&self) -> &str {
         ""
     }
-    fn exec<'a>(&self, scope: &'a Scope, _args: &Vec<String>) -> Result<Option<&'a Scope>> {
+    fn exec<'a>(&self, scope: &'a Scope, _args: &docopt::Docopt) -> Result<Option<&'a Scope>> {
         Ok(Some(scope))
     }
 }
