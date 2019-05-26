@@ -1,5 +1,4 @@
 pub mod global;
-pub use global::Global;
 
 use cardinal::errors::{Error, ErrorKind, Result};
 use docopt::Docopt;
@@ -32,6 +31,10 @@ impl Editor {
         self.read(scope)?.exec()
     }
 
+    // Runs a full REPL with a default global state.
+    pub fn run_default(&mut self) -> Result<()> {
+        self.run(&global::Global::new())
+    }
     // Runs a full REPL.
     pub fn run(&mut self, global: &Scope) -> Result<()> {
         let mut scope: Option<&Scope> = Some(global);

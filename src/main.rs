@@ -4,7 +4,7 @@ use cardinal::app::emv;
 use cardinal::card::Card;
 use cardinal::errors::Result;
 use cardinal::hexjson::HexFormatter;
-use cli::{Editor, Global};
+use cli::Editor;
 // use cardinal::transport::PCSC;
 use docopt::Docopt;
 use error_chain::quick_main;
@@ -94,7 +94,7 @@ fn run() -> Result<()> {
 
     // dump_emv(&args, &card)
 
-    Editor::new().run(&Global::new())
+    Editor::new().run_default()
 }
 
 fn dump_emv(args: &Args, card: &Card) -> Result<()> {
