@@ -62,8 +62,8 @@ pub struct Invocation<'a> {
 impl<'a> Invocation<'a> {
     // Parses an input string into an Invocation. Empty input results in a no-op invocation.
     pub fn parse(scope: &'a Scope, input: &str) -> Result<Self> {
-        let words = Self::split(input.trim())?;
-        let cmd = words
+        let argv = Self::split(input.trim())?;
+        let cmd = argv
             .first()
             .map(|name| {
                 scope
@@ -72,11 +72,7 @@ impl<'a> Invocation<'a> {
                     .ok_or_else(|| ErrorKind::CommandNotFound(name.to_string()))
             })
             .transpose()?;
-        Ok(Self {
-            scope,
-            cmd,
-            argv: words,
-        })
+        Ok(Self { scope, cmd, argv })
     }
 
     pub fn exec(&self) -> Result<Option<&'a Scope>> {
