@@ -56,18 +56,15 @@ impl Editor {
 pub struct Invocation<'a> {
     scope: &'a Scope,
     cmd: Option<&'a Command>,
-    args: Vec<String>,
+    argv: Vec<String>,
 }
 
 impl<'a> Invocation<'a> {
     // Parses an input string into an Invocation. Empty input results in a no-op invocation.
     pub fn parse(scope: &'a Scope, input: &str) -> Result<Self> {
         let words = Self::split(input.trim())?;
-        let (name, args) = words
-            .split_first()
-            .and_then(|(name, args)| Some((Some(name), args.into())))
-            .unwrap_or((None, vec![]));
-        let cmd = name
+        let cmd = words
+            .first()
             .map(|name| {
                 scope
                     .iter()
@@ -75,12 +72,16 @@ impl<'a> Invocation<'a> {
                     .ok_or_else(|| ErrorKind::CommandNotFound(name.to_string()))
             })
             .transpose()?;
-        Ok(Self { scope, cmd, args })
+        Ok(Self {
+            scope,
+            cmd,
+            argv: words,
+        })
     }
 
     pub fn exec(&self) -> Result<Option<&'a Scope>> {
         Ok(match self.cmd {
-            Some(cmd) => cmd.call(self.scope, &self.args)?,
+            Some(cmd) => cmd.call(self.scope, &self.argv)?,
             None => Some(self.scope),
         })
     }
@@ -100,11 +101,14 @@ pub trait Command {
     // Usage, in docopt format.
     fn usage(&self) -> &str;
     // Executes the command!
-    fn exec<'a>(&self, scope: &'a Scope, opts: &docopt::Docopt) -> Result<Option<&'a Scope>>;
+    fn exec<'a>(&self, scope: &'a Scope, opts: &docopt::ArgvMap) -> Result<Option<&'a Scope>>;
 
-    // Executes the command with a list of commandline arguments.
-    fn call<'a>(&self, scope: &'a Scope, args: &Vec<String>) -> Result<Option<&'a Scope>> {
-        self.exec(scope, &(Docopt::new(self.usage())?.help(true).argv(args)))
+    // Executes the command with a list of commandline arguments (where argv[0] is the command name).
+    fn call<'a>(&self, scope: &'a Scope, argv: &Vec<String>) -> Result<Option<&'a Scope>> {
+        self.exec(
+            scope,
+            &(Docopt::new(self.usage())?.help(true).argv(argv).parse()?),
+        )
     }
 }
 
@@ -115,7 +119,7 @@ impl Command for () {
     fn usage(&self) -> &str {
         ""
     }
-    fn exec<'a>(&self, scope: &'a Scope, _args: &docopt::Docopt) -> Result<Option<&'a Scope>> {
+    fn exec<'a>(&self, scope: &'a Scope, _args: &docopt::ArgvMap) -> Result<Option<&'a Scope>> {
         Ok(Some(scope))
     }
 }
