@@ -16,6 +16,9 @@ error_chain! {
     }
 
     errors {
+        CLIExit {
+            description("[exit]")
+        }
         CommandNotFound(name: String) {
             description("command not found")
             display("command not found: {:}", name)

@@ -6,7 +6,7 @@ use log::error;
 use rustyline;
 use shellwords;
 
-// Wraps an interactive editor. This is technically not specific to cardinal at all.
+/// Wraps an interactive editor. This is technically not specific to cardinal at all.
 pub struct Editor {
     ed: rustyline::Editor<()>,
 }
@@ -18,94 +18,22 @@ impl Editor {
         }
     }
 
-    // Reads a line of input.
-    pub fn readline(&mut self, _scope: &Scope) -> Result<String> {
-        Ok(self.ed.readline("~> ")?)
-    }
-    // Reads a line of input into an Invocation.
-    pub fn read<'a>(&mut self, scope: &'a Scope) -> Result<Invocation<'a>> {
-        Invocation::parse(scope, self.readline(scope)?.as_str())
-    }
-    // Reads a line of input and evaluates it.
-    pub fn interact<'a>(&mut self, scope: &'a Scope) -> Result<Option<&'a Scope>> {
-        self.read(scope)?.exec()
-    }
-
-    // Runs a full REPL with a default global state.
-    pub fn run_default(&mut self) -> Result<()> {
-        self.run(&global::Global::new())
-    }
-    // Runs a full REPL.
-    pub fn run(&mut self, global: &Scope) -> Result<()> {
-        let mut scope: Option<&Scope> = Some(global);
-        while let Some(s) = scope {
-            scope = match self.interact(s) {
-                Ok(s) => s,
-                Err(Error(ErrorKind::Readline(_), _)) => None,
-                Err(e) => {
-                    error!("{:}", e);
-                    scope
-                }
-            };
-        }
-        Ok(())
-    }
-}
-
-// Wraps a full command invocation. This is basically a fancy Fn, and should be treated as opaque.
-pub struct Invocation<'a> {
-    scope: &'a Scope,
-    cmd: Option<&'a Command>,
-    argv: Vec<String>,
-}
-
-impl<'a> Invocation<'a> {
-    // Parses an input string into an Invocation. Empty input results in a no-op invocation.
-    pub fn parse(scope: &'a Scope, input: &str) -> Result<Self> {
-        let argv = Self::split(input.trim())?;
-        let cmd = argv
-            .first()
-            .map(|name| {
-                scope
-                    .iter()
-                    .find_map(|s| s.lookup(name))
-                    .ok_or_else(|| ErrorKind::CommandNotFound(name.to_string()))
-            })
-            .transpose()?;
-        Ok(Self { scope, cmd, argv })
-    }
-
-    pub fn exec(&self) -> Result<Option<&'a Scope>> {
-        Ok(match self.cmd {
-            Some(cmd) => cmd.call(self.scope, &self.argv)?,
-            None => Some(self.scope),
-        })
-    }
-
-    // Awkward mangling of shellwords' non-fmt::Display'able errors.
-    fn split(s: &str) -> Result<Vec<String>> {
-        match shellwords::split(s) {
-            Ok(words) => Ok(words),
-            Err(shellwords::MismatchedQuotes) => Err("unterminated quotes".into()),
-        }
+    /// Reads a line of input.
+    pub fn readline(&mut self, ps1: Vec<String>) -> Result<String> {
+        let ps1s: String = ps1.join("> ") + "> ";
+        Ok(self.ed.readline(ps1s.as_str())?)
     }
 }
 
 pub trait Command {
-    // Returns a name for the command.
+    /// Returns a name for the command. Used for commandline matching.
     fn name(&self) -> &str;
-    // Usage, in docopt format.
-    fn usage(&self) -> &str;
-    // Executes the command!
-    fn exec<'a>(&self, scope: &'a Scope, opts: &docopt::ArgvMap) -> Result<Option<&'a Scope>>;
 
-    // Executes the command with a list of commandline arguments (where argv[0] is the command name).
-    fn call<'a>(&self, scope: &'a Scope, argv: &Vec<String>) -> Result<Option<&'a Scope>> {
-        self.exec(
-            scope,
-            &(Docopt::new(self.usage())?.help(true).argv(argv).parse()?),
-        )
-    }
+    /// Usage, in docopt format.
+    fn usage(&self) -> &str;
+
+    /// Executes the command!
+    fn exec<'a>(&self, scope: &'a Scope<'a>, ed: &mut Editor, opts: docopt::ArgvMap) -> Result<()>;
 }
 
 impl Command for () {
@@ -115,44 +43,72 @@ impl Command for () {
     fn usage(&self) -> &str {
         ""
     }
-    fn exec<'a>(&self, scope: &'a Scope, _args: &docopt::ArgvMap) -> Result<Option<&'a Scope>> {
-        Ok(Some(scope))
+    fn exec<'a>(&self, _s: &Scope, _ed: &mut Editor, _o: docopt::ArgvMap) -> Result<()> {
+        Ok(())
     }
 }
 
-pub trait Scope {
-    // Returns the parent scope, if any.
-    fn parent(&self) -> Option<&Scope>;
-    // Returns an iterator over self and the chain of parents.
-    fn iter(&self) -> ScopeIterator;
-    // Returns an iterator over this scope's "own" commands.
-    fn commands(&self) -> Vec<&Command>;
+pub trait Scope<'a> {
+    /// Returns the PS1 components for this scope, usually appended to the parent scope's.
+    fn ps1(&self) -> Vec<String>;
 
-    // Returns the command with the given name.
-    fn lookup(&self, name: &str) -> Option<&Command> {
-        self.commands()
-            .iter()
-            .find(|c| c.name() == name)
-            .map(|c| *c)
+    /// Returns the commands in this scope, usually prepended to the parent scope's.
+    /// If two commands exist with the same name, the first one takes precedence.
+    fn commands(&'a self) -> Vec<&'a Command>;
+}
+
+/// Wrapper around shellwords that correctly deals with its nonstandard Errors.
+pub fn split(input: &str) -> Result<Vec<String>> {
+    match shellwords::split(input) {
+        Ok(out) => Ok(out),
+        Err(shellwords::MismatchedQuotes) => Err("unterminated quotes".into()),
     }
 }
 
-pub struct ScopeIterator<'a> {
-    scope: Option<&'a Scope>,
+/// Executes the command with a list of commandline arguments, argv[0] is the command name.
+pub fn call<'a, A>(cmd: &Command, scope: &'a Scope<'a>, ed: &mut Editor, argv: A) -> Result<()>
+where
+    A: IntoIterator,
+    A::Item: AsRef<str>,
+{
+    cmd.exec(
+        scope,
+        ed,
+        Docopt::new(cmd.usage())?.help(true).argv(argv).parse()?,
+    )
 }
 
-impl<'a> ScopeIterator<'a> {
-    pub fn new(scope: &'a Scope) -> Self {
-        Self { scope: Some(scope) }
-    }
+pub fn eval<'a>(scope: &'a Scope<'a>, ed: &mut Editor, input: &str) -> Result<()> {
+    let words = split(input)?;
+    let cmd = words
+        .first()
+        .map(|name| {
+            scope
+                .commands()
+                .into_iter()
+                .find(|c| c.name() == name)
+                .ok_or(ErrorKind::CommandNotFound("command not found".into()))
+        })
+        .transpose()?
+        .unwrap_or(&());
+    call(cmd, scope, ed, words)
 }
 
-impl<'a> Iterator for ScopeIterator<'a> {
-    type Item = &'a Scope;
+/// Runs a single read-eval interaction.
+pub fn interact<'a>(scope: &'a Scope<'a>, ed: &mut Editor) -> Result<()> {
+    let input = ed.readline(scope.ps1())?;
+    eval(scope, ed, input.as_str())
+}
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let scope = self.scope;
-        self.scope = scope.and_then(|s| s.parent());
-        scope
+/// Runs a full CLI session using the specified scope as the global one.
+pub fn run<'a, S: Scope<'a>>(scope: &'a S) -> Result<()> {
+    loop {
+        match interact(scope, &mut Editor::new()) {
+            Ok(_) => {}
+            Err(Error(ErrorKind::Readline(_), _)) | Err(Error(ErrorKind::CLIExit, _)) => {
+                break Ok(());
+            }
+            Err(e) => error!("{:}", e),
+        }
     }
 }
