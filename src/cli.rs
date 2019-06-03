@@ -1,3 +1,5 @@
+pub mod card;
+pub mod emv;
 pub mod global;
 
 use cardinal::errors::{Error, ErrorKind, Result};
@@ -33,7 +35,7 @@ pub trait Command {
     fn usage(&self) -> &str;
 
     /// Executes the command!
-    fn exec<'a>(&self, scope: &'a Scope<'a>, ed: &mut Editor, opts: docopt::ArgvMap) -> Result<()>;
+    fn exec(&self, scope: &Scope, ed: &mut Editor, args: docopt::ArgvMap) -> Result<()>;
 }
 
 impl Command for () {
@@ -43,18 +45,18 @@ impl Command for () {
     fn usage(&self) -> &str {
         ""
     }
-    fn exec<'a>(&self, _s: &Scope, _ed: &mut Editor, _o: docopt::ArgvMap) -> Result<()> {
+    fn exec(&self, _s: &Scope, _ed: &mut Editor, _a: docopt::ArgvMap) -> Result<()> {
         Ok(())
     }
 }
 
-pub trait Scope<'a> {
+pub trait Scope {
     /// Returns the PS1 components for this scope, usually appended to the parent scope's.
     fn ps1(&self) -> Vec<String>;
 
     /// Returns the commands in this scope, usually prepended to the parent scope's.
     /// If two commands exist with the same name, the first one takes precedence.
-    fn commands(&'a self) -> Vec<&'a Command>;
+    fn commands(&self) -> Vec<&Command>;
 }
 
 /// Wrapper around shellwords that correctly deals with its nonstandard Errors.
@@ -66,7 +68,7 @@ pub fn split(input: &str) -> Result<Vec<String>> {
 }
 
 /// Executes the command with a list of commandline arguments, argv[0] is the command name.
-pub fn call<'a, A>(cmd: &Command, scope: &'a Scope<'a>, ed: &mut Editor, argv: A) -> Result<()>
+pub fn call<A>(cmd: &Command, scope: &Scope, ed: &mut Editor, argv: A) -> Result<()>
 where
     A: IntoIterator,
     A::Item: AsRef<str>,
@@ -78,7 +80,7 @@ where
     )
 }
 
-pub fn eval<'a>(scope: &'a Scope<'a>, ed: &mut Editor, input: &str) -> Result<()> {
+pub fn eval(scope: &Scope, ed: &mut Editor, input: &str) -> Result<()> {
     let words = split(input)?;
     let cmd = words
         .first()
@@ -95,13 +97,13 @@ pub fn eval<'a>(scope: &'a Scope<'a>, ed: &mut Editor, input: &str) -> Result<()
 }
 
 /// Runs a single read-eval interaction.
-pub fn interact<'a>(scope: &'a Scope<'a>, ed: &mut Editor) -> Result<()> {
+pub fn interact(scope: &Scope, ed: &mut Editor) -> Result<()> {
     let input = ed.readline(scope.ps1())?;
     eval(scope, ed, input.as_str())
 }
 
 /// Runs a full CLI session using the specified scope as the global one.
-pub fn run<'a, S: Scope<'a>>(scope: &'a S) -> Result<()> {
+pub fn run<S: Scope>(scope: &S) -> Result<()> {
     loop {
         match interact(scope, &mut Editor::new()) {
             Ok(_) => {}

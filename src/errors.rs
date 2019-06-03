@@ -7,6 +7,7 @@ use serde_json;
 error_chain! {
     foreign_links {
         StringFromUtf8(std::string::FromUtf8Error);
+        StringUtf8(std::str::Utf8Error);
         LogSetLoggerError(log::SetLoggerError);
         Docopt(docopt::Error);
         Readline(rustyline::error::ReadlineError);
