@@ -3,8 +3,42 @@ use crate::errors::Result;
 use crate::transport::protocol::{Protocol, APDU};
 use crate::transport::Transport;
 use log::trace;
+use std::ffi::CString;
+use std::rc::Rc;
 
 pub const DEFAULT_MAX_LE: usize = 256;
+
+pub struct Reader {
+    pctx: Rc<pcsc::Context>,
+    c_name: CString,
+
+    pub name: String,
+}
+
+impl Reader {
+    pub fn list() -> Result<Vec<Reader>> {
+        let pctx = Rc::new(pcsc::Context::establish(pcsc::Scope::User)?);
+        let mut buf = Vec::with_capacity(pctx.list_readers_len()?);
+        buf.resize(buf.capacity(), 0);
+        let mut readers = Vec::new();
+        for name in pctx.list_readers(&mut buf)? {
+            readers.push(Reader {
+                pctx: pctx.clone(),
+                c_name: name.into(),
+                name: name.to_str()?.into(),
+            })
+        }
+        Ok(readers)
+    }
+
+    pub fn connect(&self) -> Result<PCSC> {
+        Ok(PCSC::new(self.pctx.connect(
+            self.c_name.as_c_str(),
+            pcsc::ShareMode::Shared,
+            pcsc::Protocols::ANY,
+        )?))
+    }
+}
 
 pub struct PCSC {
     pub card: pcsc::Card,
