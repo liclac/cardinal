@@ -1,4 +1,4 @@
-use crate::cli::emv::EmvCommand;
+use crate::cli::emv::EMVCommand;
 use crate::cli::{run, Command, Editor, Scope};
 use cardinal::card::Card;
 use cardinal::errors::{Error, Result};
@@ -28,7 +28,7 @@ Options:
   --help    Show this message and exit."
     }
 
-    fn exec(&self, scope: &Scope, _ed: &mut Editor, opts: docopt::ArgvMap) -> Result<()> {
+    fn exec(&self, scope: &Scope, ed: &mut Editor, opts: docopt::ArgvMap) -> Result<()> {
         let opts: CardCommandArgs = opts.deserialize()?;
         let readers = Reader::list()?;
 
@@ -37,11 +37,10 @@ Options:
             let reader = readers
                 .get(num - 1)
                 .ok_or::<Error>("index out of range".into())?;
-            return run(&CardScope::new(
-                scope,
-                reader.name.clone(),
-                &Card::new(&reader.connect()?),
-            ));
+            return run(
+                ed,
+                &CardScope::new(scope, reader.name.clone(), &Card::new(&reader.connect()?)),
+            );
         }
 
         println!("Connected readers:");
@@ -61,7 +60,7 @@ pub struct CardScope<'a> {
     pub card: &'a Card<'a>,
     pub name: String,
 
-    emv: EmvCommand<'a>,
+    emv: EMVCommand<'a>,
 }
 
 impl<'a> CardScope<'a> {
@@ -70,7 +69,7 @@ impl<'a> CardScope<'a> {
             parent: parent,
             card: card,
             name,
-            emv: EmvCommand::new(card),
+            emv: EMVCommand::new(card),
         }
     }
 }

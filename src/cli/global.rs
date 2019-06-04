@@ -31,6 +31,7 @@ impl Command for ExitCommand {
     fn name(&self) -> &str {
         "exit"
     }
+
     fn usage(&self) -> &str {
         "bye!
 
@@ -40,6 +41,7 @@ Options:
   --help    Show this screen.
 "
     }
+
     fn exec<'a>(&'a self, _scope: &Scope, _ed: &mut Editor, _args: docopt::ArgvMap) -> Result<()> {
         Err(ErrorKind::CLIExit.into())
     }
@@ -52,6 +54,7 @@ impl Command for HelpCommand {
     fn name(&self) -> &str {
         "help"
     }
+
     fn usage(&self) -> &str {
         "get help
 
@@ -61,6 +64,7 @@ Options:
     --help    Show this screen.
 "
     }
+
     fn exec<'a>(&self, scope: &Scope, _ed: &mut Editor, _args: docopt::ArgvMap) -> Result<()> {
         println!("");
         for cmd in scope.commands() {

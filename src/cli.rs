@@ -103,9 +103,9 @@ pub fn interact(scope: &Scope, ed: &mut Editor) -> Result<()> {
 }
 
 /// Runs a full CLI session using the specified scope as the global one.
-pub fn run<S: Scope>(scope: &S) -> Result<()> {
+pub fn run<S: Scope>(ed: &mut Editor, scope: &S) -> Result<()> {
     loop {
-        match interact(scope, &mut Editor::new()) {
+        match interact(scope, ed) {
             Ok(_) => {}
             Err(Error(ErrorKind::Readline(_), _)) | Err(Error(ErrorKind::CLIExit, _)) => {
                 break Ok(());
