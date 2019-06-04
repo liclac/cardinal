@@ -2,10 +2,11 @@ mod cli;
 
 use cardinal::app::emv;
 use cardinal::card::Card;
-use cardinal::errors::Result;
+use cardinal::errors::{Error, ErrorKind, Result};
 use cardinal::hexjson::HexFormatter;
+use cardinal::transport::pcsc::{Reader, PCSC};
+use cli::card::CardScope;
 use cli::global::Global;
-// use cardinal::transport::PCSC;
 use docopt::Docopt;
 use error_chain::quick_main;
 use log::{info, warn};
@@ -18,7 +19,8 @@ use std::fs::File;
 const USAGE: &'static str = "
 cardinal - embr's smartcard toy.
 
-Usage: cardinal [options]
+Usage:
+    cardinal [options] [<reader>]
 
 Options:
     --decimal           Format bytes as decimal instead of hex.
@@ -29,6 +31,7 @@ Options:
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Args {
+    arg_reader: Option<usize>,
     flag_decimal: bool,
     flag_trace: Option<String>,
     flag_verbose: bool,
@@ -65,36 +68,36 @@ fn init_logging(args: &Args) -> Result<()> {
 
 quick_main!(run);
 
+fn find_pcsc(id: Option<usize>) -> Result<(String, PCSC)> {
+    let readers = Reader::list()?;
+    if let Some(i) = id {
+        let reader = readers
+            .get(i - 1)
+            .ok_or::<Error>("index out of range".into())?;
+        return Ok((reader.name.clone(), reader.connect()?));
+    }
+    for reader in readers.iter() {
+        match reader.connect() {
+            Ok(t) => return Ok((reader.name.clone(), t)),
+            Err(Error(ErrorKind::PCSC(pcsc::Error::NoSmartcard), _)) => {
+                warn!("Reader has no card inserted: {:}", reader.name);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err("no smart cards connected".into())
+}
+
 fn run() -> Result<()> {
     let args = init_args(std::env::args())?;
     init_logging(&args)?;
 
-    // Find a card reader, connect to the first one we do.
-    // let ctx = pcsc::Context::establish(pcsc::Scope::User)?;
-    // let mut buf: Vec<u8> = Vec::new();
-
-    // buf.resize(ctx.list_readers_len()?, 0);
-    // let reader = ctx
-    //     .list_readers(&mut buf)?
-    //     .next()
-    //     .expect("No readers connected");
-    // debug!("Reader: {:?}", reader);
-
-    // let scard = ctx.connect(reader, pcsc::ShareMode::Shared, pcsc::Protocols::ANY)?;
-
-    // // Read the ATR from the card. TODO: Parse this.
-    // buf.resize(scard.get_attribute_len(pcsc::Attribute::AtrString)?, 0);
-    // info!(
-    //     "ATR: {:X?}",
-    //     scard.get_attribute(pcsc::Attribute::AtrString, &mut buf)?,
-    // );
-
-    // let transport = PCSC::new(scard);
-    // let card = Card::new(&transport);
-
-    // dump_emv(&args, &card)
-
-    cli::run(&Global::new())
+    let (name, transport) = find_pcsc(args.arg_reader)?;
+    cli::run(&CardScope::new(
+        &Global::new(),
+        name,
+        &Card::new(&transport),
+    ))
 }
 
 fn dump_emv(args: &Args, card: &Card) -> Result<()> {

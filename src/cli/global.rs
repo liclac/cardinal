@@ -1,4 +1,3 @@
-use crate::cli::card::CardCommand;
 use crate::cli::{Command, Editor, Scope};
 use cardinal::errors::{ErrorKind, Result};
 
@@ -7,7 +6,6 @@ use cardinal::errors::{ErrorKind, Result};
 pub struct Global {
     help: HelpCommand,
     exit: ExitCommand,
-    card: CardCommand,
 }
 
 impl Global {
@@ -22,7 +20,7 @@ impl Scope for Global {
     }
 
     fn commands(&self) -> Vec<&Command> {
-        vec![&self.card, &self.help, &self.exit]
+        vec![&self.help, &self.exit]
     }
 }
 
