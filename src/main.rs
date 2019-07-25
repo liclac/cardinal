@@ -1,5 +1,6 @@
 use error_chain::quick_main;
 use pcsc;
+use tracing::{debug, span, Level};
 
 mod errors {
     use error_chain::error_chain;
@@ -15,7 +16,22 @@ mod errors {
 }
 use errors::Result;
 
+fn init_logging() -> Result<()> {
+    Ok(tracing::subscriber::set_global_default(
+        tracing_fmt::FmtSubscriber::builder()
+            .with_filter(tracing_fmt::filter::EnvFilter::try_new("debug").unwrap())
+            .finish(),
+    )
+    .expect("couldn't set a global logger"))
+}
+
 fn run() -> Result<()> {
+    init_logging()?;
+
+    let span = span!(Level::INFO, "main");
+    let _enter = span.enter();
+
+    debug!("Connecting to PCSC...");
     let ctx = pcsc::Context::establish(pcsc::Scope::User)?;
     let mut reader_buf = Vec::with_capacity(ctx.list_readers_len()?);
     reader_buf.resize(reader_buf.capacity(), 0);

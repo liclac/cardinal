@@ -8,4 +8,6 @@ edition = "2018"
 
 [dependencies]
 error-chain = "0"
+tracing = "0.1"
+tracing-fmt = "0.0.1-alpha"
 pcsc = "2"
