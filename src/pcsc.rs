@@ -10,19 +10,19 @@ impl TryFrom<pcsc::Protocol> for Protocol {
     fn try_from(v: pcsc::Protocol) -> std::result::Result<Self, Self::Error> {
         match v {
             pcsc::Protocol::T1 => Ok(Protocol::T1),
-            pcsc::Protocol::T0 => Err(ErrorKind::UnsupportedProtocol("T0".into()).into()),
+            pcsc::Protocol::T0 => Ok(Protocol::T0),
             pcsc::Protocol::RAW => Err(ErrorKind::UnsupportedProtocol("RAW".into()).into()),
         }
     }
 }
 
-pub struct Card<'c> {
-    pub card: &'c pcsc::Card,
+pub struct Card {
+    pub card: pcsc::Card,
     pub proto: Protocol,
 }
 
-impl<'c> Card<'c> {
-    pub fn wrap(card: &'c pcsc::Card) -> Result<Self> {
+impl Card {
+    pub fn wrap(card: pcsc::Card) -> Result<Self> {
         let (_status, proto) = card.status()?;
         Ok(Self {
             card,
@@ -31,7 +31,7 @@ impl<'c> Card<'c> {
     }
 }
 
-impl<'c> CardTrait for Card<'c> {
+impl CardTrait for Card {
     const BUF_SIZE: usize = pcsc::MAX_BUFFER_SIZE;
 
     fn exec<'a>(&mut self, req: APDU<'a>, buf: &'a mut [u8]) -> Result<RAPDU<'a>> {

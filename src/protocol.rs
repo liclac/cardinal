@@ -5,10 +5,10 @@ use std::convert::TryInto;
 use std::io::prelude::*;
 
 /// Abstraction around smartcard wire protocols.
-/// TODO: Implement T=0, I'm leaving this for later as it's a tad cruftier.
 /// TODO: Implement T=CL, I need to find a viable transport layer for NFC.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
+    T0,
     T1,
 }
 
@@ -24,7 +24,9 @@ impl Protocol {
             )?;
             num += util::write_all(w, req.data)?;
         }
-        num += util::write_all(w, &[req.le])?;
+        if self == &Self::T1 || req.data.len() == 0 {
+            num += util::write_all(w, &[req.le])?;
+        }
         Ok(num)
     }
 
@@ -42,6 +44,22 @@ impl Protocol {
 mod tests {
     use super::*;
     use crate::errors::Error;
+
+    #[test]
+    fn t0_write_req() -> Result<()> {
+        let mut buf = Vec::new();
+        Protocol::T0.write_req(&mut buf, &APDU::new(0x00, 0xA4, 0x12, 0x34, &[]))?;
+        assert_eq!(&buf, &[0x00, 0xA4, 0x12, 0x34, 0x00],);
+        Ok(())
+    }
+
+    #[test]
+    fn t0_write_req_body() -> Result<()> {
+        let mut buf = Vec::new();
+        Protocol::T0.write_req(&mut buf, &APDU::new(0x00, 0xA4, 0x12, 0x34, &[0x56, 0x78]))?;
+        assert_eq!(&buf, &[0x00, 0xA4, 0x12, 0x34, 0x02, 0x56, 0x78],);
+        Ok(())
+    }
 
     #[test]
     fn t1_write_req() -> Result<()> {
@@ -71,6 +89,32 @@ mod tests {
             Error(ErrorKind::APDUBodyTooLong(512, 255), _) => assert!(true),
             v => assert!(false, "wrong error: {}", v),
         };
+        Ok(())
+    }
+
+    #[test]
+    fn t0_decode_res() -> Result<()> {
+        let res = Protocol::T0.decode_res(&[0x90, 0x00])?;
+        assert_eq!(
+            &res,
+            &RAPDU {
+                data: &[],
+                sw: StatusCode(0x90, 0x00)
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn t0_decode_res_body() -> Result<()> {
+        let res = Protocol::T0.decode_res(&[0x12, 0x34, 0x56, 0x78, 0x90, 0x00])?;
+        assert_eq!(
+            &res,
+            &RAPDU {
+                data: &[0x12, 0x34, 0x56, 0x78],
+                sw: StatusCode(0x90, 0x00),
+            }
+        );
         Ok(())
     }
 
