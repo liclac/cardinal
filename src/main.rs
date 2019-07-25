@@ -1,7 +1,8 @@
+use cardinal::pcsc::Card as PCard;
 use error_chain::quick_main;
 use pcsc;
 use structopt::StructOpt;
-use tracing::{debug, info, span, trace, Level};
+use tracing::{debug, span, trace, Level};
 
 mod errors {
     use error_chain::error_chain;
@@ -20,6 +21,10 @@ use errors::Result;
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cardinal", about = "The Swiss army knife of smartcards")]
 struct Opt {
+    #[structopt(short = "r", long = "reader-num", default_value = "0")]
+    /// Zero-indexed reader number, if you have multiple.
+    reader_num: usize,
+
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     /// Every time you -v, it gets noisier (up to -vvv)
     verbosity: u8,
@@ -42,27 +47,44 @@ fn init_logging(opt: &Opt) -> Result<()> {
     .expect("couldn't set a global logger"))
 }
 
-fn run() -> Result<()> {
-    let opt = Opt::from_args();
-    init_logging(&opt)?;
-
-    let span = span!(Level::INFO, "main");
+fn find_card(opt: &Opt) -> Result<PCard> {
+    let span = span!(Level::INFO, "find_card");
     let _enter = span.enter();
 
     debug!("Connecting to PCSC...");
-    trace!("pcsc::Context::establish()");
+    trace!({ scope = "user" }, "pcsc::Context::establish()");
     let ctx = pcsc::Context::establish(pcsc::Scope::User)?;
+
+    debug!("Listing readers...");
     trace!("pcsc::Context::list_readers_len()");
     let mut reader_buf = Vec::with_capacity(ctx.list_readers_len()?);
     reader_buf.resize(reader_buf.capacity(), 0);
     trace!(
-        { list_readers_len = reader_buf.capacity() },
+        { buf_len = reader_buf.capacity() },
         "pcsc::Context::list_readers()"
     );
     let readers = ctx.list_readers(&mut reader_buf)?;
-    for name in readers {
-        info!({ name = name.to_str()? }, "Found reader!");
-    }
+
+    let cname = readers
+        .skip(opt.reader_num)
+        .next()
+        .ok_or(pcsc::Error::ReaderUnavailable)?;
+    let name = cname.to_str()?;
+
+    debug!({ name }, "Connecting to reader...");
+    trace!(
+        { name, sharing_mode=?pcsc::ShareMode::Shared, protocols=?pcsc::Protocols::ANY },
+        "pcsc::Context::connect()"
+    );
+    let card = ctx.connect(cname, pcsc::ShareMode::Shared, pcsc::Protocols::ANY)?;
+    Ok(PCard::wrap(card)?)
+}
+
+fn run() -> Result<()> {
+    let opt = Opt::from_args();
+    init_logging(&opt)?;
+
+    let _card = find_card(&opt)?;
 
     Ok(())
 }
