@@ -1,5 +1,6 @@
 use error_chain::quick_main;
 use pcsc;
+use structopt::StructOpt;
 use tracing::{debug, span, Level};
 
 mod errors {
@@ -16,17 +17,29 @@ mod errors {
 }
 use errors::Result;
 
-fn init_logging() -> Result<()> {
+#[derive(Debug, StructOpt)]
+#[structopt(name = "cardinal", about = "The Swiss army knife of smartcards")]
+struct Opt {
+    #[structopt(short = "v", long = "verbose")]
+    /// Enable debug logging
+    verbose: bool,
+}
+
+fn init_logging(opt: &Opt) -> Result<()> {
     Ok(tracing::subscriber::set_global_default(
         tracing_fmt::FmtSubscriber::builder()
-            .with_filter(tracing_fmt::filter::EnvFilter::try_new("debug").unwrap())
+            .with_filter(
+                tracing_fmt::filter::EnvFilter::try_new(if opt.verbose { "debug" } else { "info" })
+                    .unwrap(),
+            )
             .finish(),
     )
     .expect("couldn't set a global logger"))
 }
 
 fn run() -> Result<()> {
-    init_logging()?;
+    let opt = Opt::from_args();
+    init_logging(&opt)?;
 
     let span = span!(Level::INFO, "main");
     let _enter = span.enter();
