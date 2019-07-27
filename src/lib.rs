@@ -4,7 +4,7 @@ pub mod protocol;
 pub mod util;
 
 use crate::errors::{Error, Result};
-use std::convert::{From, TryFrom, TryInto};
+use std::convert::{TryFrom, TryInto};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct APDU {
@@ -54,9 +54,28 @@ pub struct RAPDU {
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct StatusCode(pub u8, pub u8);
 
+/// Higher-level trait for card commands.
+pub trait Command: TryInto<APDU> {
+    type Response: TryFrom<RAPDU>;
+}
+
+impl Command for APDU {
+    type Response = RAPDU;
+}
+
 /// A higher-level interface around a smartcard reader.
 pub trait Card {
     /// Executes an APDU against the card, and returns the response.
     /// The response will be read into buf, which must be at least BUF_SIZE in length.
     fn exec(&mut self, req: &APDU) -> Result<RAPDU>;
+
+    /// Executes a command against the card, and returns the response.
+    ///
+    /// TODO: Handle Le with retries or GET RESPONSE.
+    fn call<C: Command>(&mut self, req: C) -> Result<C::Response>
+    where
+        Error: From<C::Error> + From<<C::Response as TryFrom<RAPDU>>::Error>,
+    {
+        Ok(self.exec(&req.try_into()?)?.try_into()?)
+    }
 }
