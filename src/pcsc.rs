@@ -1,6 +1,6 @@
 use crate::errors::{Error, ErrorKind, Result};
 use crate::protocol::Protocol;
-use crate::{Card as CardTrait, APDU, MAX_BUFFER_SIZE, RAPDU};
+use crate::{Card as CardTrait, APDU, RAPDU};
 use pcsc;
 use std::convert::{TryFrom, TryInto};
 
@@ -32,14 +32,13 @@ impl Card {
 }
 
 impl CardTrait for Card {
-    const BUF_SIZE: usize = pcsc::MAX_BUFFER_SIZE;
-
-    fn exec<'a>(&mut self, req: APDU<'a>, buf: &'a mut [u8]) -> Result<RAPDU<'a>> {
-        let mut reqbuf = [0; MAX_BUFFER_SIZE];
+    fn exec(&mut self, req: &APDU) -> Result<RAPDU> {
+        let mut reqbuf = [0; pcsc::MAX_BUFFER_SIZE];
         let reqlen = self.proto.write_req(&mut (&mut reqbuf[..]), &req)?;
         let req = &reqbuf[..reqlen];
 
-        let res = self.card.transmit(&req, &mut buf[..])?;
-        self.proto.decode_res(res)
+        let mut resbuf = [0; pcsc::MAX_BUFFER_SIZE];
+        let res = self.card.transmit(&req, &mut resbuf[..])?;
+        self.proto.decode_res(&res)
     }
 }
