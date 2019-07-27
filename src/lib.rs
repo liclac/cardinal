@@ -1,4 +1,5 @@
 pub mod errors;
+pub mod iso7816;
 pub mod pcsc;
 pub mod protocol;
 pub mod util;
@@ -66,7 +67,7 @@ impl Command for APDU {
 /// A higher-level interface around a smartcard reader.
 pub trait Card {
     /// Executes an APDU against the card, and returns the response.
-    /// The response will be read into buf, which must be at least BUF_SIZE in length.
+    /// This is a low-level function and does not necessarily handle Le.
     fn exec(&mut self, req: &APDU) -> Result<RAPDU>;
 
     /// Executes a command against the card, and returns the response.
