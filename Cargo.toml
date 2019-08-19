@@ -11,6 +11,7 @@ error-chain = "0"
 tracing = "0.1"
 pcsc = "2"
 bitflags = "1"
+nom = "5"
 
 tracing-fmt = "0.0.1-alpha"
 structopt = "0.2"
