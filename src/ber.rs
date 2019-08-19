@@ -1,8 +1,33 @@
+use error_chain::error_chain;
 use nom::number::complete::{be_u16, be_u24, be_u32, be_u8};
-use nom::{multi::length_data, pair, take, IResult};
+use nom::{multi::length_data, pair, take};
+
+pub type IError<'a> = (&'a [u8], nom::error::ErrorKind);
+pub type IResult<'a, T> = nom::IResult<&'a [u8], T, IError<'a>>;
+
+error_chain! {
+    errors {
+        Incomplete(needed: nom::Needed) {
+            display("{:?}", needed)
+        }
+        Nom(e: nom::error::ErrorKind) {
+            display("{:?}", e)
+        }
+    }
+}
+
+impl<'a> From<nom::Err<IError<'a>>> for Error {
+    fn from(err: nom::Err<IError<'a>>) -> Self {
+        match err {
+            nom::Err::Incomplete(needed) => ErrorKind::Incomplete(needed).into(),
+            nom::Err::Error(e) => ErrorKind::Nom(e.1).into(),
+            nom::Err::Failure(e) => ErrorKind::Nom(e.1).into(),
+        }
+    }
+}
 
 /// Parses a partial, big-endian u32. If the input is shorter than 4 bytes, it's padded.
-fn part_u32(raw: &[u8]) -> IResult<&[u8], u32> {
+fn part_u32(raw: &[u8]) -> IResult<u32> {
     match raw.len() {
         0 => Ok((raw, 0)),
         1 => be_u8(raw).map(|(i, v)| (i, v as u32)),
@@ -15,7 +40,7 @@ fn part_u32(raw: &[u8]) -> IResult<&[u8], u32> {
 
 /// Parses a raw TLV tag as a byte sequence. BER-TLV tags can be any length, if the lower 5 bits of the first
 /// byte are all set, the next byte is read, and subsequent bytes may set their highest bit to keep going.
-pub fn parse_raw_tag(input: &[u8]) -> IResult<&[u8], &[u8]> {
+pub fn parse_raw_tag(input: &[u8]) -> IResult<&[u8]> {
     if input.len() == 0 {
         return IResult::Err(nom::Err::Error((input, nom::error::ErrorKind::Eof)));
     }
@@ -31,13 +56,13 @@ pub fn parse_raw_tag(input: &[u8]) -> IResult<&[u8], &[u8]> {
 
 /// Parses a TLV tag. BER-TLV tags can have any length, but I've never seen one longer than a u32. If you do
 /// encounter one, please do widen this. (Or if you prefer, use parse_raw_tag() to handle arbitrary lengths.)
-pub fn parse_tag(input: &[u8]) -> IResult<&[u8], u32> {
+pub fn parse_tag(input: &[u8]) -> IResult<u32> {
     parse_raw_tag(input).and_then(|(i, raw)| IResult::Ok((i, part_u32(raw)?.1)))
 }
 
 /// Parses a TLV value's length. If bit 8 of the first byte is 0, bits 1-7 encode the length of the data.
 /// If bit 8 is set, bits 1-7 encode the number of subsequent bytes representing the length of the data.
-pub fn parse_len(input: &[u8]) -> IResult<&[u8], usize> {
+pub fn parse_len(input: &[u8]) -> IResult<usize> {
     let (first, input) = input
         .split_first()
         .ok_or(nom::Err::Incomplete(nom::Needed::Size(1)))?;
@@ -50,12 +75,12 @@ pub fn parse_len(input: &[u8]) -> IResult<&[u8], usize> {
 }
 
 /// Parses a raw tag-value pair.
-pub fn parse_next_raw(input: &[u8]) -> IResult<&[u8], (&[u8], &[u8])> {
+pub fn parse_next_raw(input: &[u8]) -> IResult<(&[u8], &[u8])> {
     pair!(input, parse_raw_tag, length_data(parse_len))
 }
 
 /// Parses a tag-value pair.
-pub fn parse_next(input: &[u8]) -> IResult<&[u8], (u32, &[u8])> {
+pub fn parse_next(input: &[u8]) -> IResult<(u32, &[u8])> {
     pair!(input, parse_tag, length_data(parse_len))
 }
 
@@ -74,7 +99,7 @@ impl<'a> TLVIterator<'a> {
 }
 
 impl<'a> Iterator for TLVIterator<'a> {
-    type Item = Result<(u32, &'a [u8]), nom::Err<(&'a [u8], nom::error::ErrorKind)>>;
+    type Item = Result<(u32, &'a [u8])>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match parse_next(self.input) {
@@ -83,7 +108,7 @@ impl<'a> Iterator for TLVIterator<'a> {
                 Some(Ok(v))
             }
             Err(nom::Err::Error((_, nom::error::ErrorKind::Eof))) => None,
-            Err(e) => Some(Err(e)),
+            Err(e) => Some(Err(e.into())),
         }
     }
 }
@@ -170,11 +195,10 @@ mod tests {
     #[test]
     fn test_iter() {
         assert_eq!(
-            Ok(vec![
-                (0x4F, &[0x03, 0x04][..]),
-                (0x5F50, &[0x04, 0x05, 0x06][..])
-            ]),
-            iter(&[0x4F, 0x02, 0x03, 0x04, 0x5F, 0x50, 0x81, 0x03, 0x04, 0x05, 0x06][..]).collect(),
+            vec![(0x4F, &[0x03, 0x04][..]), (0x5F50, &[0x04, 0x05, 0x06][..])],
+            iter(&[0x4F, 0x02, 0x03, 0x04, 0x5F, 0x50, 0x81, 0x03, 0x04, 0x05, 0x06][..])
+                .collect::<Result<Vec<_>>>()
+                .unwrap(),
         );
     }
 }

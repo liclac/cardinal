@@ -1,6 +1,10 @@
 use error_chain::error_chain;
 
 error_chain! {
+    links {
+        BER(crate::ber::Error, crate::ber::ErrorKind);
+    }
+
     foreign_links {
         IO(std::io::Error);
         PCSC(pcsc::Error);
