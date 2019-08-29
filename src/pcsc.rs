@@ -3,6 +3,7 @@ use crate::protocol::Protocol;
 use crate::{Card as CardTrait, APDU, RAPDU};
 use pcsc;
 use std::convert::{TryFrom, TryInto};
+use tracing::trace;
 
 impl TryFrom<pcsc::Protocol> for Protocol {
     type Error = Error;
@@ -35,10 +36,13 @@ impl CardTrait for Card {
     fn exec_impl(&mut self, req: &APDU) -> Result<RAPDU> {
         let mut reqbuf = [0; pcsc::MAX_BUFFER_SIZE];
         let reqlen = self.proto.write_req(&mut (&mut reqbuf[..]), &req)?;
-        let req = &reqbuf[..reqlen];
+        let reqdata = &reqbuf[..reqlen];
+        trace!(">> {:02x?}", reqdata);
 
         let mut resbuf = [0; pcsc::MAX_BUFFER_SIZE];
-        let res = self.card.transmit(&req, &mut resbuf[..])?;
-        self.proto.decode_res(&res)
+        let resdata = self.card.transmit(&reqdata, &mut resbuf[..])?;
+        trace!("<< {:02x?}", resdata);
+
+        self.proto.decode_res(&resdata)
     }
 }
