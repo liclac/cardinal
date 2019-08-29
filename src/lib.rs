@@ -143,7 +143,7 @@ impl Command for APDU {
 }
 
 /// A higher-level interface around a smartcard reader.
-pub trait Card {
+pub trait Card: std::fmt::Debug {
     fn exec_impl(&mut self, req: &APDU) -> Result<RAPDU>;
 
     /// Executes an APDU against the card, and returns the response.

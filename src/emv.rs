@@ -2,6 +2,7 @@ use crate::errors::Result;
 use crate::iso7816::Select;
 use crate::Card;
 
+#[derive(Debug)]
 pub struct Directory<C: Card> {
     pub card: C,
 }

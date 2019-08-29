@@ -46,3 +46,9 @@ impl CardTrait for Card {
         self.proto.decode_res(&resdata)
     }
 }
+
+impl std::fmt::Debug for Card {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "pcsc::Card{{ proto: {:#?} }}", self.proto)
+    }
+}

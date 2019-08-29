@@ -31,7 +31,8 @@ impl EMVCommand {
     fn exec<C: Card>(&self, card: C) -> Result<()> {
         match self {
             Self::Ls {} => {
-                emv::Directory::new(card).select()?;
+                let dir = emv::Directory::new(card).select()?;
+                println!("{:#02x?}", dir);
             }
         };
         Ok(())
