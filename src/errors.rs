@@ -9,6 +9,7 @@ error_chain! {
         IO(std::io::Error);
         PCSC(pcsc::Error);
         TryFromInt(std::num::TryFromIntError);
+        Infallible(std::convert::Infallible);
     }
 
     errors {
