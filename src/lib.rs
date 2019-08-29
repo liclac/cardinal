@@ -1,4 +1,5 @@
 pub mod ber;
+pub mod emv;
 pub mod errors;
 pub mod iso7816;
 pub mod pcsc;
@@ -143,17 +144,24 @@ impl Command for APDU {
 
 /// A higher-level interface around a smartcard reader.
 pub trait Card {
+    fn exec_impl(&mut self, req: &APDU) -> Result<RAPDU>;
+
     /// Executes an APDU against the card, and returns the response.
-    /// This is a low-level function and does not necessarily handle Le.
-    fn exec(&mut self, req: &APDU) -> Result<RAPDU>;
+    fn exec(&mut self, req: APDU) -> Result<RAPDU> {
+        let resp = self.exec_impl(&req)?;
+        match resp.sw {
+            Status::OK => Ok(resp),
+            Status::GetResponse(xx) => self.exec(iso7816::GetResponse::new(xx).into()),
+            Status::RetryWithLe(xx) => self.exec(req.expect(xx)),
+            x => Err(ErrorKind::APDU(x).into()),
+        }
+    }
 
     /// Executes a command against the card, and returns the response.
-    ///
-    /// TODO: Handle Le with retries or GET RESPONSE.
     fn call<C: Command>(&mut self, req: C) -> Result<C::Response>
     where
         Error: From<C::Error> + From<<C::Response as TryFrom<RAPDU>>::Error>,
     {
-        Ok(self.exec(&req.try_into()?)?.try_into()?)
+        Ok(self.exec(req.try_into()?)?.try_into()?)
     }
 }
