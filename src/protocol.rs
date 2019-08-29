@@ -1,6 +1,6 @@
 use crate::errors::{ErrorKind, Result};
 use crate::util;
-use crate::{StatusCode, APDU, RAPDU};
+use crate::{Status, APDU, RAPDU};
 use std::convert::TryInto;
 use std::io::prelude::*;
 
@@ -34,7 +34,7 @@ impl Protocol {
         let (sw2, data) = data.split_last().ok_or("data truncated: no SW2")?;
         let (sw1, data) = data.split_last().ok_or("data truncated: no SW1")?;
         Ok(RAPDU {
-            sw: StatusCode(*sw1, *sw2),
+            sw: Status::from(*sw1, *sw2),
             data: data.to_vec(),
         })
     }

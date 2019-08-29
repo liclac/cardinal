@@ -32,7 +32,7 @@ impl Card {
 }
 
 impl CardTrait for Card {
-    fn exec(&mut self, req: &APDU) -> Result<RAPDU> {
+    fn exec_impl(&mut self, req: &APDU) -> Result<RAPDU> {
         let mut reqbuf = [0; pcsc::MAX_BUFFER_SIZE];
         let reqlen = self.proto.write_req(&mut (&mut reqbuf[..]), &req)?;
         let req = &reqbuf[..reqlen];

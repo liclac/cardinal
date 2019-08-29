@@ -5,7 +5,7 @@ pub mod pcsc;
 pub mod protocol;
 pub mod util;
 
-use crate::errors::{Error, Result};
+use crate::errors::{Error, ErrorKind, Result};
 use std::convert::{TryFrom, TryInto};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -45,16 +45,92 @@ impl APDU {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RAPDU {
     /// Response data.
     pub data: Vec<u8>,
     // Status word; (0x90, 0x00) is success.
-    pub sw: StatusCode,
+    pub sw: Status,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct StatusCode(pub u8, pub u8);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Status {
+    /// 0x9000: OK. Any other 0x90XX is RFU and will be parsed as Unknown(0x90, xx).
+    OK,
+
+    /// 0x61XX: Instructs the caller to issue a GET RESPONSE command with Le=xx.
+    ///
+    /// This is a "procedure byte" and, along with RetryWithLe(xx), deals with the fact that the length of a
+    /// response can't always be known ahead of time.
+    ///
+    /// This is normally handled automatically, unless you're making manual calls to Card::exec().
+    GetResponse(u8),
+
+    /// 0x6Cxx: Instructs the caller to retry the last command with Le=xx.
+    ///
+    /// This is a "procedure byte" and, along with GetResponse(xx), deals with the fact that the length of a
+    /// response can't always be known ahead of time.
+    ///
+    /// This is normally handled automatically, unless you're making manual calls to Card::exec().
+    RetryWithLe(u8),
+
+    /// 0x6283: State of non-volatile memory unchanged; selected file invalidated.
+    ///
+    /// TODO: Figure out what this actually means.
+    SelectionInvalidated,
+
+    /// 0x6300: State of non-volatile memory changed; authentication failed.
+    AuthenticationFailed,
+
+    /// 0x63CX: State of non-volatile memory changed; counter provided by 'x' (0-15).
+    ///
+    /// This is used for eg. the number of attempted PIN entries for EMV payment cards.
+    Counter(u8),
+
+    /// 0x6983: Command not allowed; authentication method blocked.
+    AuthMethodBlocked,
+    /// 0x6984 Command not allowed; referenced data invalidated
+    DataInvalidated,
+    /// 0x6985 Command not allowed; conditions of use not satisfied.
+    ConditionsOfUse,
+
+    /// 0x6A81 Wrong parameter(s) P1 P2; function not supported.
+    FunctionNotSupported,
+    /// 0x6A82 Wrong parameter(s) P1 P2; file not found.
+    FileNotFound,
+    /// 0x6A83 Wrong parameter(s) P1 P2; record not found.
+    RecordNotFound,
+    /// 0x6A88 Referenced data (data objects) not found.
+    DataNotFound,
+
+    /// We've encountered something we don't understand.
+    Unknown(u8, u8),
+}
+
+impl Status {
+    pub fn from(sw1: u8, sw2: u8) -> Self {
+        match (sw1, sw2) {
+            (0x90, 0x00) => Self::OK,
+            (0x61, xx) => Self::GetResponse(xx),
+            (0x6C, xx) => Self::RetryWithLe(xx),
+            (0x63, xx) => {
+                if xx < 0xC0 {
+                    Self::Unknown(0x63, xx)
+                } else {
+                    Self::Counter(xx)
+                }
+            }
+            (0x69, 0x83) => Self::AuthMethodBlocked,
+            (0x69, 0x84) => Self::DataInvalidated,
+            (0x69, 0x85) => Self::ConditionsOfUse,
+            (0x6A, 0x81) => Self::FunctionNotSupported,
+            (0x6A, 0x82) => Self::FileNotFound,
+            (0x6A, 0x83) => Self::RecordNotFound,
+            (0x6A, 0x88) => Self::DataNotFound,
+            (x, y) => Self::Unknown(x, y),
+        }
+    }
+}
 
 /// Higher-level trait for card commands.
 pub trait Command: TryInto<APDU> {

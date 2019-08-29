@@ -13,6 +13,9 @@ error_chain! {
     }
 
     errors {
+        APDU(status: crate::Status) {
+            display("{:02x?}", status)
+        }
         UnsupportedProtocol(s: String) {
             description("card uses an unsupported protocol"),
             display("card uses an unsupported protocol: {}", s),
