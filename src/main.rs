@@ -1,4 +1,6 @@
+use cardinal::emv;
 use cardinal::pcsc::Card as PCard;
+use cardinal::Card;
 use error_chain::quick_main;
 use pcsc;
 use structopt::StructOpt;
@@ -19,6 +21,42 @@ mod errors {
 use errors::Result;
 
 #[derive(Debug, StructOpt)]
+enum EMVCommand {
+    #[structopt(name = "ls")]
+    /// List EMV applications on the card.
+    Ls {},
+}
+
+impl EMVCommand {
+    fn exec<C: Card>(&self, card: C) -> Result<()> {
+        match self {
+            Self::Ls {} => {
+                emv::Directory::new(card).select()?;
+            }
+        };
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
+enum Command {
+    #[structopt(name = "emv")]
+    /// EMV payment card related commands.
+    EMV {
+        #[structopt(subcommand)]
+        cmd: EMVCommand,
+    },
+}
+
+impl Command {
+    fn exec<C: Card>(&self, card: C) -> Result<()> {
+        match self {
+            Self::EMV { cmd } => cmd.exec(card),
+        }
+    }
+}
+
+#[derive(Debug, StructOpt)]
 #[structopt(name = "cardinal", about = "The Swiss army knife of smartcards")]
 struct Opt {
     #[structopt(short = "r", long = "reader-num", default_value = "0")]
@@ -28,23 +66,9 @@ struct Opt {
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     /// Every time you -v, it gets noisier (up to -vvv)
     verbosity: u8,
-}
 
-fn init_logging(opt: &Opt) -> Result<()> {
-    Ok(tracing::subscriber::set_global_default(
-        tracing_fmt::FmtSubscriber::builder()
-            .with_filter(
-                tracing_fmt::filter::EnvFilter::try_new(match opt.verbosity {
-                    0 => "warn",
-                    1 => "info",
-                    2 => "debug",
-                    _ => "trace",
-                })
-                .unwrap(),
-            )
-            .finish(),
-    )
-    .expect("couldn't set a global logger"))
+    #[structopt(subcommand)]
+    cmd: Command,
 }
 
 fn find_card(opt: &Opt) -> Result<PCard> {
@@ -80,12 +104,28 @@ fn find_card(opt: &Opt) -> Result<PCard> {
     Ok(PCard::wrap(card)?)
 }
 
+fn init_logging(opt: &Opt) -> Result<()> {
+    Ok(tracing::subscriber::set_global_default(
+        tracing_fmt::FmtSubscriber::builder()
+            .with_filter(
+                tracing_fmt::filter::EnvFilter::try_new(match opt.verbosity {
+                    0 => "warn",
+                    1 => "info",
+                    2 => "debug",
+                    _ => "trace",
+                })
+                .unwrap(),
+            )
+            .finish(),
+    )
+    .expect("couldn't set a global logger"))
+}
+
 fn run() -> Result<()> {
     let opt = Opt::from_args();
     init_logging(&opt)?;
 
-    let _card = find_card(&opt)?;
-
-    Ok(())
+    let card = find_card(&opt)?;
+    opt.cmd.exec(card)
 }
 quick_main!(run);
