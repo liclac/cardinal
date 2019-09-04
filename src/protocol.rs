@@ -104,7 +104,7 @@ mod tests {
             &res,
             &RAPDU {
                 data: vec![],
-                sw: StatusCode(0x90, 0x00)
+                sw: Status::OK,
             }
         );
         Ok(())
@@ -117,7 +117,7 @@ mod tests {
             &res,
             &RAPDU {
                 data: vec![0x12, 0x34, 0x56, 0x78],
-                sw: StatusCode(0x90, 0x00),
+                sw: Status::OK,
             }
         );
         Ok(())
@@ -130,7 +130,7 @@ mod tests {
             &res,
             &RAPDU {
                 data: vec![],
-                sw: StatusCode(0x90, 0x00)
+                sw: Status::OK,
             }
         );
         Ok(())
@@ -143,7 +143,7 @@ mod tests {
             &res,
             &RAPDU {
                 data: vec![0x12, 0x34, 0x56, 0x78],
-                sw: StatusCode(0x90, 0x00),
+                sw: Status::OK,
             }
         );
         Ok(())
