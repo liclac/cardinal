@@ -54,6 +54,12 @@ pub struct RAPDU {
     pub sw: Status,
 }
 
+impl From<RAPDU> for () {
+    fn from(_: RAPDU) -> Self {
+        ()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
     /// 0x9000: OK. Any other 0x90XX is RFU and will be parsed as Unknown(0x90, xx).
