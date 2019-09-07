@@ -75,7 +75,20 @@ impl EnvironmentFCI {
 
 #[derive(Debug, Default)]
 pub struct EnvironmentFCIProprietary {
+    /// 88, n-1: SFI of the Directory Elementary File. May not exceed 30. Use in READ RECORD commands.
+    pub dir_sfi: u8,
+
+    /// 5F2D, an2-8: Language Preference. 1-4 alpha2 ISO 639 language codes, in order of user preference.
+    /// Note: EMV recommends this tag be lowercase, but uppercase should be accepted by terminals as well.
     pub lang_pref: Option<String>,
+
+    /// 9F11: Issuer Code Table Index. The code page that should be used to display application labels.
+    pub issuer_code_table_idx: Option<u8>,
+
+    /// BF0C: FCI Issuer Discretionary Data. The contents are a BER-encoded map.
+    pub fci_issuer: Option<HashMap<u32, Vec<u8>>>,
+
+    /// Unknown tags.
     pub extra: HashMap<u32, Vec<u8>>,
 }
 
@@ -85,7 +98,10 @@ impl EnvironmentFCIProprietary {
         for tvr in ber::iter(data) {
             let (tag, value) = tvr?;
             match tag {
-                0x5f2d => slf.lang_pref = Some(String::from_utf8_lossy(value).into()),
+                0x88 => slf.dir_sfi = *value.first().unwrap_or(&0),
+                0x5F2D => slf.lang_pref = Some(String::from_utf8_lossy(value).into()),
+                0x9F11 => slf.issuer_code_table_idx = Some(*value.first().unwrap_or(&0)),
+                0xBF0C => slf.fci_issuer = Some(ber::iter(value).to_map()?),
                 _ => {
                     slf.extra.insert(tag, value.into());
                 }

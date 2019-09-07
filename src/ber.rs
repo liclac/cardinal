@@ -1,6 +1,7 @@
 use error_chain::error_chain;
 use nom::number::complete::{be_u16, be_u24, be_u32, be_u8};
 use nom::{error::ParseError, multi::length_data, pair, take};
+use std::collections::HashMap;
 
 pub type IResult<'a, T> = nom::IResult<&'a [u8], T, Error>;
 
@@ -112,6 +113,17 @@ pub fn iter<'a>(input: &'a [u8]) -> TLVIterator<'a> {
 impl<'a> TLVIterator<'a> {
     pub fn new(input: &'a [u8]) -> Self {
         Self { input }
+    }
+}
+
+impl<'a> TLVIterator<'a> {
+    pub fn to_map<V: From<&'a [u8]>>(self) -> Result<HashMap<u32, V>> {
+        let mut map = HashMap::new();
+        for tvr in self {
+            let (tag, value) = tvr?;
+            map.insert(tag, value.into());
+        }
+        Ok(map)
     }
 }
 

@@ -32,7 +32,7 @@ impl EMVCommand {
         match self {
             Self::Ls {} => {
                 let pse = emv::Environment::new(card).select()?;
-                println!("{:#02x?}", pse);
+                debug!("{:#02x?}", pse);
             }
         };
         Ok(())
