@@ -27,7 +27,10 @@ impl<C: Card> Environment<C> {
 
 #[derive(Debug, Default)]
 pub struct EnvironmentData {
+    /// 0x6F: ISO7816 File Control Information.
     pub fci: EnvironmentFCI,
+
+    /// Unknown tags.
     pub extra: HashMap<u32, Vec<u8>>,
 }
 
@@ -51,8 +54,13 @@ impl TryFrom<RAPDU> for EnvironmentData {
 
 #[derive(Debug, Default)]
 pub struct EnvironmentFCI {
+    /// 0x84, b5-16: Name of the selected file.
     pub df_name: String,
+
+    /// 0xA5: EMV proprietary data.
     pub fci_proprietary: EnvironmentFCIProprietary,
+
+    /// Unknown tags.
     pub extra: HashMap<u32, Vec<u8>>,
 }
 

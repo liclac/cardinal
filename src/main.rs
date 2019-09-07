@@ -4,7 +4,7 @@ use cardinal::Card;
 use error_chain::quick_main;
 use pcsc;
 use structopt::StructOpt;
-use tracing::{debug, span, trace, Level};
+use tracing::{debug, info, span, trace, Level};
 
 mod errors {
     use error_chain::error_chain;
@@ -31,8 +31,9 @@ impl EMVCommand {
     fn exec<C: Card>(&self, card: C) -> Result<()> {
         match self {
             Self::Ls {} => {
+                debug!("SELECT 1PAY.SYS.DDF01");
                 let pse = emv::Environment::new(card).select()?;
-                debug!("{:#02x?}", pse);
+                info!("{:#02x?}", pse);
             }
         };
         Ok(())
