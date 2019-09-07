@@ -1,6 +1,7 @@
 use crate::{Command, APDU, RAPDU};
 use bitflags::bitflags;
-use std::convert::Into;
+use std::convert::{Into, TryFrom};
+use std::marker::PhantomData;
 
 bitflags! {
     #[derive(Default)]
@@ -57,16 +58,18 @@ impl Occurrence {
     }
 }
 
-pub struct Select {
+pub struct Select<R: TryFrom<RAPDU> = ()> {
     pub aid: AID,
     pub occurrence: Occurrence,
+    _response: PhantomData<R>,
 }
 
-impl Select {
+impl<R: TryFrom<RAPDU>> Select<R> {
     pub fn new(aid: AID) -> Self {
         Self {
             aid,
             occurrence: Occurrence::First,
+            _response: PhantomData::default(),
         }
     }
 
@@ -84,11 +87,11 @@ impl Select {
     }
 }
 
-impl Command for Select {
-    type Response = RAPDU;
+impl<R: TryFrom<RAPDU>> Command for Select<R> {
+    type Response = R;
 }
 
-impl Into<APDU> for Select {
+impl<R: TryFrom<RAPDU>> Into<APDU> for Select<R> {
     fn into(self) -> APDU {
         APDU::new(
             0x00,
@@ -114,7 +117,7 @@ mod test {
                 0x00,
                 vec![0xA0, 0x00, 0x00, 0x00, 0x04, 0x60, 0x00]
             ),
-            Select::id(vec![0xA0, 0x00, 0x00, 0x00, 0x04, 0x60, 0x00]).into(),
+            Select::<()>::id(vec![0xA0, 0x00, 0x00, 0x00, 0x04, 0x60, 0x00]).into(),
         );
     }
 
@@ -128,7 +131,7 @@ mod test {
                 0x02,
                 vec![0xA0, 0x00, 0x00, 0x00, 0x04, 0x60, 0x00]
             ),
-            Select::id(vec![0xA0, 0x00, 0x00, 0x00, 0x04, 0x60, 0x00])
+            Select::<()>::id(vec![0xA0, 0x00, 0x00, 0x00, 0x04, 0x60, 0x00])
                 .next()
                 .into(),
         );
@@ -147,7 +150,7 @@ mod test {
                     0x31,
                 ]
             ),
-            Select::name("1PAY.SYS.DDF01".as_bytes()).into(),
+            Select::<()>::name("1PAY.SYS.DDF01".as_bytes()).into(),
         );
     }
 
@@ -164,7 +167,9 @@ mod test {
                     0x31,
                 ]
             ),
-            Select::name("1PAY.SYS.DDF01".as_bytes()).next().into(),
+            Select::<()>::name("1PAY.SYS.DDF01".as_bytes())
+                .next()
+                .into(),
         );
     }
 }

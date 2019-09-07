@@ -13,7 +13,7 @@ impl<C: Card> Directory<C> {
     }
 
     pub fn select(mut self) -> Result<Self> {
-        self.card.call(Select::name("1PAY.SYS.DDF01"))?;
+        self.card.call(Select::<()>::name("1PAY.SYS.DDF01"))?;
         Ok(self)
     }
 }
