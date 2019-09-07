@@ -49,6 +49,6 @@ impl CardTrait for Card {
 
 impl std::fmt::Debug for Card {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "pcsc::Card{{ proto: {:#?} }}", self.proto)
+        write!(f, "pcsc::Card {{ proto: {:#?} }}", self.proto)
     }
 }
