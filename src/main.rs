@@ -34,6 +34,10 @@ impl EMVCommand {
                 debug!("SELECT 1PAY.SYS.DDF01");
                 let pse = emv::Environment::new(card).select()?;
                 info!("{:#02x?}", pse);
+                debug!("READ RECORD ...");
+                for rec in pse.dir_records() {
+                    info!("{:#02x?}", rec?);
+                }
             }
         };
         Ok(())

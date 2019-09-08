@@ -1,6 +1,6 @@
 use crate::ber;
 use crate::errors::{Error, Result};
-use crate::iso7816::Select;
+use crate::iso7816::{RecordIter, Select};
 use crate::{Card, RAPDU};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -22,6 +22,10 @@ impl<'a, C: Card> Environment<'a, C> {
     pub fn select(mut self) -> Result<Self> {
         self.data = self.card.call(Select::name("1PAY.SYS.DDF01"))?;
         Ok(self)
+    }
+
+    pub fn dir_records(&self) -> RecordIter<'a, C, DirectoryRecord> {
+        RecordIter::new(self.card, self.data.fci.fci_proprietary.dir_sfi)
     }
 }
 
@@ -116,5 +120,34 @@ impl EnvironmentFCIProprietary {
             }
         }
         Ok(slf)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DirectoryRecord {
+    /// Unknown tags.
+    pub extra: HashMap<u32, Vec<u8>>,
+}
+
+impl DirectoryRecord {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut slf = Self::default();
+        for tvr in ber::iter(data) {
+            let (tag, value) = tvr?;
+            match tag {
+                _ => {
+                    slf.extra.insert(tag, value.into());
+                }
+            }
+        }
+        Ok(slf)
+    }
+}
+
+impl TryFrom<RAPDU> for DirectoryRecord {
+    type Error = Error;
+
+    fn try_from(res: RAPDU) -> Result<Self> {
+        Self::parse(&res.data)
     }
 }
