@@ -107,6 +107,8 @@ pub enum Status {
     FileNotFound,
     /// 0x6A83 Wrong parameter(s) P1 P2; record not found.
     RecordNotFound,
+    /// 0x6A86 Wrong parameter(s) P1 P2.
+    WrongP1P2,
     /// 0x6A88 Referenced data (data objects) not found.
     DataNotFound,
 
@@ -133,6 +135,7 @@ impl Status {
             (0x6A, 0x81) => Self::FunctionNotSupported,
             (0x6A, 0x82) => Self::FileNotFound,
             (0x6A, 0x83) => Self::RecordNotFound,
+            (0x6A, 0x86) => Self::WrongP1P2,
             (0x6A, 0x88) => Self::DataNotFound,
             (x, y) => Self::Unknown(x, y),
         }
