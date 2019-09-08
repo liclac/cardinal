@@ -125,6 +125,9 @@ impl EnvironmentFCIProprietary {
 
 #[derive(Debug, Default)]
 pub struct DirectoryRecord {
+    /// 0x70: Directory Record.
+    pub record: DirectoryRecordData,
+
     /// Unknown tags.
     pub extra: HashMap<u32, Vec<u8>>,
 }
@@ -135,6 +138,7 @@ impl DirectoryRecord {
         for tvr in ber::iter(data) {
             let (tag, value) = tvr?;
             match tag {
+                0x70 => slf.record = DirectoryRecordData::parse(value)?,
                 _ => {
                     slf.extra.insert(tag, value.into());
                 }
@@ -149,5 +153,67 @@ impl TryFrom<RAPDU> for DirectoryRecord {
 
     fn try_from(res: RAPDU) -> Result<Self> {
         Self::parse(&res.data)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DirectoryRecordData {
+    /// 0x61: Directory Entry; repeated.
+    pub entries: Vec<DirectoryRecordEntry>,
+    /// Unknown tags.
+    pub extra: HashMap<u32, Vec<u8>>,
+}
+
+impl DirectoryRecordData {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut slf = Self::default();
+        for tvr in ber::iter(data) {
+            let (tag, value) = tvr?;
+            match tag {
+                0x61 => slf.entries.push(DirectoryRecordEntry::parse(value)?),
+                _ => {
+                    slf.extra.insert(tag, value.into());
+                }
+            }
+        }
+        Ok(slf)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DirectoryRecordEntry {
+    /// 0x4F: ADF Name.
+    pub adf_name: Vec<u8>,
+    /// 0x50: Application Label.
+    pub app_label: String,
+    /// 0x9F12: Application Preferred Name.
+    pub app_pref_name: Option<String>,
+    /// 0x87: Application Priority Indicator.
+    pub app_prio: Option<u8>,
+    /// 0x73: Directory Discretionary Template. Proprietary data from the application provider,
+    ///       eg. Mastercard/Visa, chip manufacturer, or a handful of EMV-defined tags [TODO].
+    pub discretionary: HashMap<u32, Vec<u8>>,
+
+    /// Unknown tags.
+    pub extra: HashMap<u32, Vec<u8>>,
+}
+
+impl DirectoryRecordEntry {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut slf = Self::default();
+        for tvr in ber::iter(data) {
+            let (tag, value) = tvr?;
+            match tag {
+                0x4F => slf.adf_name = value.into(),
+                0x50 => slf.app_label = String::from_utf8_lossy(value).into(),
+                0x9F12 => slf.app_pref_name = Some(String::from_utf8_lossy(value).into()),
+                0x87 => slf.app_prio = value.first().map(|v| *v),
+                0x73 => slf.discretionary = ber::iter(value).to_map()?,
+                _ => {
+                    slf.extra.insert(tag, value.into());
+                }
+            }
+        }
+        Ok(slf)
     }
 }

@@ -35,8 +35,22 @@ impl EMVCommand {
                 let pse = emv::Environment::new(card).select()?;
                 info!("{:#02x?}", pse);
                 debug!("READ RECORD ...");
-                for rec in pse.dir_records() {
-                    info!("{:#02x?}", rec?);
+                for recr in pse.dir_records() {
+                    let rec = recr?;
+                    info!("{:#02x?}", rec);
+                    for entry in rec.record.entries {
+                        println!(
+                            "{:16}    {:}    {:}",
+                            entry
+                                .adf_name
+                                .iter()
+                                .map(|b| format!("{:02X}", b))
+                                .collect::<Vec<_>>()
+                                .join(""),
+                            entry.app_label,
+                            entry.app_pref_name.unwrap_or_default()
+                        );
+                    }
                 }
             }
         };
