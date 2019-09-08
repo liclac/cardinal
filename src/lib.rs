@@ -150,10 +150,10 @@ impl Command for APDU {
 
 /// A higher-level interface around a smartcard reader.
 pub trait Card: std::fmt::Debug {
-    fn exec_impl(&mut self, req: &APDU) -> Result<RAPDU>;
+    fn exec_impl(&self, req: &APDU) -> Result<RAPDU>;
 
     /// Executes an APDU against the card, and returns the response.
-    fn exec(&mut self, req: APDU) -> Result<RAPDU> {
+    fn exec(&self, req: APDU) -> Result<RAPDU> {
         let resp = self.exec_impl(&req)?;
         match resp.sw {
             Status::OK => Ok(resp),
@@ -164,7 +164,7 @@ pub trait Card: std::fmt::Debug {
     }
 
     /// Executes a command against the card, and returns the response.
-    fn call<C: Command>(&mut self, req: C) -> Result<C::Response>
+    fn call<C: Command>(&self, req: C) -> Result<C::Response>
     where
         Error: From<C::Error> + From<<C::Response as TryFrom<RAPDU>>::Error>,
     {

@@ -28,7 +28,7 @@ enum EMVCommand {
 }
 
 impl EMVCommand {
-    fn exec<C: Card>(&self, card: C) -> Result<()> {
+    fn exec<C: Card>(&self, card: &C) -> Result<()> {
         match self {
             Self::Ls {} => {
                 debug!("SELECT 1PAY.SYS.DDF01");
@@ -51,7 +51,7 @@ enum Command {
 }
 
 impl Command {
-    fn exec<C: Card>(&self, card: C) -> Result<()> {
+    fn exec<C: Card>(&self, card: &C) -> Result<()> {
         match self {
             Self::EMV { cmd } => cmd.exec(card),
         }
@@ -128,6 +128,6 @@ fn run() -> Result<()> {
     init_logging(&opt)?;
 
     let card = find_card(&opt)?;
-    opt.cmd.exec(card)
+    opt.cmd.exec(&card)
 }
 quick_main!(run);

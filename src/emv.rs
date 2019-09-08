@@ -6,13 +6,13 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 
 #[derive(Debug)]
-pub struct Environment<C: Card> {
-    pub card: C,
+pub struct Environment<'a, C: Card> {
+    pub card: &'a C,
     pub data: EnvironmentData,
 }
 
-impl<C: Card> Environment<C> {
-    pub fn new(card: C) -> Self {
+impl<'a, C: Card> Environment<'a, C> {
+    pub fn new(card: &'a C) -> Self {
         Self {
             card,
             data: EnvironmentData::default(),
