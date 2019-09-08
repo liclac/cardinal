@@ -140,7 +140,7 @@ impl Status {
 }
 
 /// Higher-level trait for card commands.
-pub trait Command: TryInto<APDU> {
+pub trait Command: Into<APDU> {
     type Response: TryFrom<RAPDU>;
 }
 
@@ -166,8 +166,8 @@ pub trait Card: std::fmt::Debug {
     /// Executes a command against the card, and returns the response.
     fn call<C: Command>(&self, req: C) -> Result<C::Response>
     where
-        Error: From<C::Error> + From<<C::Response as TryFrom<RAPDU>>::Error>,
+        Error: From<<C::Response as TryFrom<RAPDU>>::Error>,
     {
-        Ok(self.exec(req.try_into()?)?.try_into()?)
+        Ok(self.exec(req.into())?.try_into()?)
     }
 }
