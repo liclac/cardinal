@@ -1,5 +1,7 @@
+pub mod read_record;
 pub mod select;
 
+pub use read_record::{ReadRecord, RecordIter};
 pub use select::{Select, AID};
 
 use crate::{Command, APDU, RAPDU};
