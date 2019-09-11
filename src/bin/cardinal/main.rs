@@ -1,7 +1,6 @@
 mod cmd_emv;
 
 use cardinal::pcsc::Card as PCard;
-use cardinal::Card;
 use error_chain::quick_main;
 use pcsc;
 use std::ffi::CString;
@@ -22,10 +21,10 @@ mod errors {
 }
 use errors::Result;
 
-fn cmd_readers(opt: &Opt) -> Result<()> {
+fn cmd_readers(_opt: &Opt) -> Result<()> {
     let (_, readers) = list_cards()?;
     for (i, reader) in readers.iter().enumerate() {
-        println!("{:3} {:}", i, reader.to_string_lossy());
+        println!("{:3}  {:}", i, reader.to_string_lossy());
     }
     Ok(())
 }
@@ -55,7 +54,7 @@ impl Command {
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cardinal", about = "The Swiss army knife of smartcards")]
-struct Opt {
+pub struct Opt {
     #[structopt(short = "r", long = "reader-num", default_value = "0")]
     /// Zero-indexed reader number, if you have multiple.
     reader_num: usize,

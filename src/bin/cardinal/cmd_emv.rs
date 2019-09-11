@@ -46,7 +46,6 @@ impl Command {
     pub fn exec(&self, opt: &Opt) -> Result<()> {
         match self {
             Self::Ls {} => cmd_ls(opt),
-        };
-        Ok(())
+        }
     }
 }
