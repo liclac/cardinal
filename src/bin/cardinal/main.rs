@@ -4,6 +4,7 @@ use cardinal::pcsc::Card as PCard;
 use cardinal::Card;
 use error_chain::quick_main;
 use pcsc;
+use std::ffi::CString;
 use structopt::StructOpt;
 use tracing::{debug, span, trace, Level};
 
@@ -32,9 +33,9 @@ enum Command {
 }
 
 impl Command {
-    fn exec<C: Card>(&self, card: &C) -> Result<()> {
+    fn exec(&self, opt: &Opt) -> Result<()> {
         match self {
-            Self::EMV { cmd } => cmd.exec(card),
+            Self::EMV { cmd } => cmd.exec(opt),
         }
     }
 }
@@ -54,8 +55,8 @@ struct Opt {
     cmd: Command,
 }
 
-fn find_card(opt: &Opt) -> Result<PCard> {
-    let span = span!(Level::INFO, "find_card");
+fn list_cards() -> Result<(pcsc::Context, Vec<CString>)> {
+    let span = span!(Level::TRACE, "list_cards");
     let _enter = span.enter();
 
     debug!("Connecting to PCSC...");
@@ -71,8 +72,16 @@ fn find_card(opt: &Opt) -> Result<PCard> {
         "pcsc::Context::list_readers()"
     );
     let readers = ctx.list_readers(&mut reader_buf)?;
+    Ok((ctx, readers.map(|s| s.into()).collect()))
+}
 
+fn find_card(opt: &Opt) -> Result<PCard> {
+    let span = span!(Level::TRACE, "find_card");
+    let _enter = span.enter();
+
+    let (ctx, readers) = list_cards()?;
     let cname = readers
+        .iter()
         .skip(opt.reader_num)
         .next()
         .ok_or(pcsc::Error::ReaderUnavailable)?;
@@ -107,8 +116,6 @@ fn init_logging(opt: &Opt) -> Result<()> {
 fn run() -> Result<()> {
     let opt = Opt::from_args();
     init_logging(&opt)?;
-
-    let card = find_card(&opt)?;
-    opt.cmd.exec(&card)
+    opt.cmd.exec(&opt)
 }
 quick_main!(run);
