@@ -22,8 +22,20 @@ mod errors {
 }
 use errors::Result;
 
+fn cmd_readers(opt: &Opt) -> Result<()> {
+    let (_, readers) = list_cards()?;
+    for (i, reader) in readers.iter().enumerate() {
+        println!("{:3} {:}", i, reader.to_string_lossy());
+    }
+    Ok(())
+}
+
 #[derive(Debug, StructOpt)]
 enum Command {
+    #[structopt(name = "readers")]
+    /// List all connected readers.
+    Readers,
+
     #[structopt(name = "emv")]
     /// EMV payment card related commands.
     EMV {
@@ -35,6 +47,7 @@ enum Command {
 impl Command {
     fn exec(&self, opt: &Opt) -> Result<()> {
         match self {
+            Self::Readers => cmd_readers(opt),
             Self::EMV { cmd } => cmd.exec(opt),
         }
     }
