@@ -1,10 +1,11 @@
-use cardinal::emv;
+mod cmd_emv;
+
 use cardinal::pcsc::Card as PCard;
 use cardinal::Card;
 use error_chain::quick_main;
 use pcsc;
 use structopt::StructOpt;
-use tracing::{debug, info, span, trace, Level};
+use tracing::{debug, span, trace, Level};
 
 mod errors {
     use error_chain::error_chain;
@@ -21,50 +22,12 @@ mod errors {
 use errors::Result;
 
 #[derive(Debug, StructOpt)]
-enum EMVCommand {
-    #[structopt(name = "ls")]
-    /// List EMV applications on the card.
-    Ls {},
-}
-
-impl EMVCommand {
-    fn exec<C: Card>(&self, card: &C) -> Result<()> {
-        match self {
-            Self::Ls {} => {
-                debug!("SELECT 1PAY.SYS.DDF01");
-                let pse = emv::Environment::new(card).select()?;
-                info!("{:#02x?}", pse);
-                debug!("READ RECORD ...");
-                for recr in pse.dir_records() {
-                    let rec = recr?;
-                    info!("{:#02x?}", rec);
-                    for entry in rec.record.entries {
-                        println!(
-                            "{:16}    {:}    {:}",
-                            entry
-                                .adf_name
-                                .iter()
-                                .map(|b| format!("{:02X}", b))
-                                .collect::<Vec<_>>()
-                                .join(""),
-                            entry.app_label,
-                            entry.app_pref_name.unwrap_or_default()
-                        );
-                    }
-                }
-            }
-        };
-        Ok(())
-    }
-}
-
-#[derive(Debug, StructOpt)]
 enum Command {
     #[structopt(name = "emv")]
     /// EMV payment card related commands.
     EMV {
         #[structopt(subcommand)]
-        cmd: EMVCommand,
+        cmd: cmd_emv::Command,
     },
 }
 
