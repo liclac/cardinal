@@ -4,7 +4,7 @@ use crate::iso7816::{RecordIter, Select};
 use crate::{Card, RAPDU};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::convert::{From, TryFrom};
 
 #[derive(Debug)]
 pub struct Environment<'a, C: Card> {
@@ -30,7 +30,7 @@ impl<'a, C: Card> Environment<'a, C> {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub struct EnvironmentData {
     /// 0x6F: ISO7816 File Control Information.
     pub fci: EnvironmentFCI,
@@ -57,7 +57,7 @@ impl TryFrom<RAPDU> for EnvironmentData {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub struct EnvironmentFCI {
     /// 0x84, b5-16: Name of the selected file.
     pub df_name: String,
@@ -86,7 +86,7 @@ impl EnvironmentFCI {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub struct EnvironmentFCIProprietary {
     /// 88, n-1: SFI of the Directory Elementary File. May not exceed 30. Use in READ RECORD commands.
     pub dir_sfi: u8,
@@ -124,7 +124,7 @@ impl EnvironmentFCIProprietary {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub struct DirectoryRecord {
     /// 0x70: Directory Record.
     pub record: DirectoryRecordData,
@@ -157,7 +157,7 @@ impl TryFrom<RAPDU> for DirectoryRecord {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub struct DirectoryRecordData {
     /// 0x61: Directory Entry; repeated.
     pub entries: Vec<DirectoryRecordEntry>,
@@ -181,7 +181,7 @@ impl DirectoryRecordData {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub struct DirectoryRecordEntry {
     /// 0x4F: ADF Name.
     pub adf_name: Vec<u8>,
