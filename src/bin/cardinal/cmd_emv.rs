@@ -14,8 +14,7 @@ pub struct Dump {
 impl Dump {
     pub fn collect<C: Card>(card: &C) -> Result<Self> {
         let pse = emv::Environment::new(card).select()?;
-        let psd: Vec<emv::DirectoryRecord> =
-            pse.dir_records().collect::<cardinal::errors::Result<_>>()?;
+        let psd = pse.dir_records().collect::<cardinal::errors::Result<_>>()?;
         Ok(Self {
             environment: pse.data,
             directory: psd,
