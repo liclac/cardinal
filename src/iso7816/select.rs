@@ -1,23 +1,10 @@
 use crate::{Command, APDU, RAPDU};
 use bitflags::bitflags;
+use serde::Serialize;
 use std::convert::{Into, TryFrom};
 use std::marker::PhantomData;
 
-bitflags! {
-    #[derive(Default)]
-    struct P1: u8 {
-        /// Select by name, rather than ID.
-        const SELECT_BY_NAME = 0b100;
-    }
-}
-
-bitflags! {
-    struct P2: u8 {
-        /// Select the next occurrence. If unset, select the first occurrence.
-        const NEXT_OCCURRENCE = 0b10;
-    }
-}
-
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum AID {
     ID(Vec<u8>),
     Name(Vec<u8>),
@@ -38,6 +25,21 @@ impl Into<Vec<u8>> for AID {
             Self::ID(v) => v,
             Self::Name(v) => v,
         }
+    }
+}
+
+bitflags! {
+    #[derive(Default)]
+    struct P1: u8 {
+        /// Select by name, rather than ID.
+        const SELECT_BY_NAME = 0b100;
+    }
+}
+
+bitflags! {
+    struct P2: u8 {
+        /// Select the next occurrence. If unset, select the first occurrence.
+        const NEXT_OCCURRENCE = 0b10;
     }
 }
 

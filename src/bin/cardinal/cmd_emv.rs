@@ -46,7 +46,7 @@ fn cmd_ls(opt: &Opt) -> Result<()> {
                 entry
                     .adf_name
                     .iter()
-                    .map(|b| format!("{:02X}", b))
+                    .map(|b| format!("{:02X?}", b))
                     .collect::<Vec<_>>()
                     .join(""),
                 entry.app_label,
