@@ -2,6 +2,7 @@ use crate::{Command, APDU, RAPDU};
 use bitflags::bitflags;
 use serde::Serialize;
 use std::convert::{Into, TryFrom};
+use std::fmt;
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -16,6 +17,31 @@ impl AID {
             Self::ID(_) => P1::empty(),
             Self::Name(_) => P1::SELECT_BY_NAME,
         }
+    }
+
+    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, u8> {
+        match self {
+            Self::ID(data) => data.iter(),
+            Self::Name(data) => data.iter(),
+        }
+    }
+}
+
+impl fmt::UpperHex for AID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for b in self.iter() {
+            b.fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::LowerHex for AID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for b in self.iter() {
+            b.fmt(f)?;
+        }
+        Ok(())
     }
 }
 
