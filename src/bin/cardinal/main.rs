@@ -3,6 +3,8 @@ mod cmd_emv;
 use cardinal::pcsc::Card as PCard;
 use error_chain::quick_main;
 use pcsc;
+use serde;
+use serde_json;
 use std::ffi::CString;
 use structopt::StructOpt;
 use tracing::{debug, span, trace, Level};
@@ -15,6 +17,7 @@ mod errors {
         }
         foreign_links {
             PCSC(pcsc::Error);
+            JSON(serde_json::Error);
             StrUtf8(std::str::Utf8Error);
         }
     }
@@ -63,11 +66,25 @@ pub struct Opt {
     /// Every time you -v, it gets noisier (up to -vvv)
     verbosity: u8,
 
+    #[structopt(short = "j", long = "json")]
+    /// Dump output as JSON, rather than structs.
+    json: bool,
+
     #[structopt(subcommand)]
     cmd: Command,
 }
 
-fn list_cards() -> Result<(pcsc::Context, Vec<CString>)> {
+/// Prints a value to stdout, as Debug or pretty-printed JSON, depending on the --json flag.
+pub fn dump<V: serde::Serialize + std::fmt::Debug>(opt: &Opt, value: &V) -> Result<()> {
+    if opt.json {
+        serde_json::to_writer_pretty(std::io::stdout().lock(), value)?;
+    } else {
+        println!("{:#02x?}", value);
+    }
+    Ok(())
+}
+
+pub fn list_cards() -> Result<(pcsc::Context, Vec<CString>)> {
     let span = span!(Level::TRACE, "list_cards");
     let _enter = span.enter();
 
@@ -87,7 +104,7 @@ fn list_cards() -> Result<(pcsc::Context, Vec<CString>)> {
     Ok((ctx, readers.map(|s| s.into()).collect()))
 }
 
-fn find_card(opt: &Opt) -> Result<PCard> {
+pub fn find_card(opt: &Opt) -> Result<PCard> {
     let span = span!(Level::TRACE, "find_card");
     let _enter = span.enter();
 
