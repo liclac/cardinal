@@ -190,7 +190,7 @@ pub struct DirectoryRecordEntry {
     /// 0x9F12: Application Preferred Name.
     pub app_pref_name: Option<String>,
     /// 0x87: Application Priority Indicator.
-    pub app_prio: Option<u8>,
+    pub app_prio: Option<AppPriority>,
     /// 0x73: Directory Discretionary Template. Proprietary data from the application provider,
     ///       eg. Mastercard/Visa, chip manufacturer, or a handful of EMV-defined tags [TODO].
     pub discretionary: HashMap<u32, Vec<u8>>,
@@ -208,7 +208,7 @@ impl DirectoryRecordEntry {
                 0x4F => slf.adf_name = value.into(),
                 0x50 => slf.app_label = String::from_utf8_lossy(value).into(),
                 0x9F12 => slf.app_pref_name = Some(String::from_utf8_lossy(value).into()),
-                0x87 => slf.app_prio = value.first().map(|v| *v),
+                0x87 => slf.app_prio = value.first().map(|v| (*v).into()),
                 0x73 => slf.discretionary = ber::iter(value).to_map()?,
                 _ => {
                     slf.extra.insert(tag, value.into());
@@ -216,5 +216,60 @@ impl DirectoryRecordEntry {
             }
         }
         Ok(slf)
+    }
+}
+
+#[derive(Default, Debug, Serialize, PartialEq, Eq)]
+pub struct AppPriority {
+    /// Bit 1-4: Number in the priority list (1-15).
+    pub num: u8,
+    /// Bit 5-7: RFU
+    pub rfu: u8,
+    /// Bit 8: If set, the application may not be selected without confirmation.
+    pub noauto: bool,
+}
+
+impl AppPriority {
+    pub fn new(num: u8, rfu: u8, noauto: bool) -> Self {
+        Self { num, rfu, noauto }
+    }
+}
+
+impl From<u8> for AppPriority {
+    fn from(b: u8) -> Self {
+        Self {
+            num: b & 0b0000_1111,
+            rfu: (b & 0b0111_0000) >> 4,
+            noauto: b & 0b1000_0000 != 0,
+        }
+    }
+}
+
+impl From<AppPriority> for u8 {
+    fn from(p: AppPriority) -> Self {
+        p.num | p.rfu << 4 | if p.noauto { 0b1000_0000 } else { 0 }
+    }
+}
+
+#[cfg(test)]
+mod test_app_priority {
+    use super::AppPriority;
+
+    #[test]
+    fn test_u8() {
+        assert_eq!(AppPriority::new(1, 0, false), 0x01.into());
+        assert_eq!(AppPriority::new(5, 0, false), 0x05.into());
+        assert_eq!(AppPriority::new(15, 0, false), 0x0F.into());
+        assert_eq!(AppPriority::new(12, 6, false), 0x6C.into());
+        assert_eq!(AppPriority::new(12, 6, true), 0xEC.into());
+    }
+
+    #[test]
+    fn test_u8_into() {
+        assert_eq!(0x01u8, AppPriority::new(1, 0, false).into());
+        assert_eq!(0x05u8, AppPriority::new(5, 0, false).into());
+        assert_eq!(0x0Fu8, AppPriority::new(15, 0, false).into());
+        assert_eq!(0x6Cu8, AppPriority::new(12, 6, false).into());
+        assert_eq!(0xECu8, AppPriority::new(12, 6, true).into());
     }
 }
