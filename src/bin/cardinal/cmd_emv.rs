@@ -42,13 +42,8 @@ fn cmd_ls(opt: &Opt) -> Result<()> {
         info!("{:#02x?}", rec);
         for entry in rec.record.entries {
             println!(
-                "{:16}    {:}    {:}",
-                entry
-                    .adf_name
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>()
-                    .join(""),
+                "{:016}    {:}    {:}",
+                entry.adf_name,
                 entry.app_label,
                 entry.app_pref_name.unwrap_or_default()
             );

@@ -184,7 +184,7 @@ impl DirectoryRecordData {
 #[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub struct DirectoryRecordEntry {
     /// 0x4F: ADF Name.
-    pub adf_name: Option<AID>,
+    pub adf_name: AID,
     /// 0x50: Application Label.
     pub app_label: String,
     /// 0x9F12: Application Preferred Name.
@@ -205,7 +205,7 @@ impl DirectoryRecordEntry {
         for tvr in ber::iter(data) {
             let (tag, value) = tvr?;
             match tag {
-                0x4F => slf.adf_name = Some(AID::Name(value.into())),
+                0x4F => slf.adf_name = AID::Name(value.into()),
                 0x50 => slf.app_label = String::from_utf8_lossy(value).into(),
                 0x9F12 => slf.app_pref_name = Some(String::from_utf8_lossy(value).into()),
                 0x87 => slf.app_prio = value.first().map(|v| (*v).into()),

@@ -27,10 +27,22 @@ impl AID {
     }
 }
 
+impl Default for AID {
+    fn default() -> Self {
+        Self::ID(vec![])
+    }
+}
+
+impl fmt::Display for AID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:X}", self)
+    }
+}
+
 impl fmt::UpperHex for AID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for b in self.iter() {
-            b.fmt(f)?;
+            write!(f, "{:02X}", b)?;
         }
         Ok(())
     }
@@ -39,7 +51,7 @@ impl fmt::UpperHex for AID {
 impl fmt::LowerHex for AID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for b in self.iter() {
-            b.fmt(f)?;
+            write!(f, "{:02x}", b)?;
         }
         Ok(())
     }
