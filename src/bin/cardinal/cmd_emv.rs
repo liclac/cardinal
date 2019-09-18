@@ -10,6 +10,7 @@ use tracing::{debug, info, span, Level};
 pub struct Dump {
     pub environment: emv::Environment,
     pub directory: Vec<emv::DirectoryRecord>,
+    pub apps: Vec<emv::App>,
 }
 
 impl Dump {
@@ -20,9 +21,18 @@ impl Dump {
         // The PSD is supposed to consist of a single record, but as always, don't trust that.
         let psd = pse.dir_records(card).collect::<CResult<Vec<_>>>()?;
 
+        // Select each application in the directory, just ignore any that don't work for w/e reason.
+        let mut apps = vec![];
+        for rec in psd.iter() {
+            for entry in rec.record.entries.iter() {
+                // TODO: There's no good reason why we'd have to clone() the AID, it never mutates.
+                apps.push(entry.adf_name.clone().select().call(card)?);
+            }
+        }
         Ok(Self {
             environment: pse,
             directory: psd,
+            apps,
         })
     }
 }
