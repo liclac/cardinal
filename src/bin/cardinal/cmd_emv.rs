@@ -8,32 +8,29 @@ use tracing::{debug, info, span, Level};
 
 #[derive(Default, Debug, Serialize)]
 pub struct Dump {
-    pub environment: emv::Environment,
-    pub directory: Vec<emv::DirectoryRecord>,
+    pub env: emv::Environment,
+    pub dir: Vec<emv::DirectoryRecord>,
     pub apps: Vec<emv::App>,
 }
 
 impl Dump {
     pub fn collect<C: Card>(card: &C) -> Result<Self> {
         // Select the PSE (Payment System Environment), which we can use to list applications.
-        let pse = emv::Environment::select().call(card)?;
+        let env = emv::Environment::select().call(card)?;
 
         // The PSD is supposed to consist of a single record, but as always, don't trust that.
-        let psd = pse.dir_records(card).collect::<CResult<Vec<_>>>()?;
+        let dir = env.dir_records(card).collect::<CResult<Vec<_>>>()?;
 
         // Select each application in the directory, just ignore any that don't work for w/e reason.
         let mut apps = vec![];
-        for rec in psd.iter() {
+        for rec in dir.iter() {
             for entry in rec.record.entries.iter() {
                 // TODO: There's no good reason why we'd have to clone() the AID, it never mutates.
                 apps.push(entry.adf_name.clone().select().call(card)?);
             }
         }
-        Ok(Self {
-            environment: pse,
-            directory: psd,
-            apps,
-        })
+
+        Ok(Self { env, dir, apps })
     }
 }
 
