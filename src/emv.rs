@@ -8,6 +8,9 @@ use std::convert::{From, TryFrom};
 
 #[derive(Default, Debug, Serialize, Eq, PartialEq)]
 pub struct App {
+    /// 0x6F: File Control Information.
+    pub fci: AppFCI,
+
     /// Unknown tags.
     pub extra: HashMap<u32, Vec<u8>>,
 }
@@ -18,6 +21,7 @@ impl App {
         for tvr in ber::iter(data) {
             let (tag, value) = tvr?;
             match tag {
+                0x6f => slf.fci = AppFCI::parse(value)?,
                 _ => {
                     slf.extra.insert(tag, value.into());
                 }
@@ -32,6 +36,73 @@ impl TryFrom<RAPDU> for App {
 
     fn try_from(res: RAPDU) -> Result<Self> {
         Self::parse(&res.data)
+    }
+}
+
+#[derive(Default, Debug, Serialize, Eq, PartialEq)]
+pub struct AppFCI {
+    /// 0x84: DF Name.
+    pub df_name: AID,
+    /// 0xA5: EMV Proprietary Data.
+    pub emv: AppFCIEMV,
+    /// Unknown tags.
+    pub extra: HashMap<u32, Vec<u8>>,
+}
+
+impl AppFCI {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut slf = Self::default();
+        for tvr in ber::iter(data) {
+            let (tag, value) = tvr?;
+            match tag {
+                0x84 => slf.df_name = AID::Name(value.into()),
+                0xa5 => slf.emv = AppFCIEMV::parse(value)?,
+                _ => {
+                    slf.extra.insert(tag, value.into());
+                }
+            }
+        }
+        Ok(slf)
+    }
+}
+
+#[derive(Default, Debug, Serialize, Eq, PartialEq)]
+pub struct AppFCIEMV {
+    /// 0x50: Application Label.
+    pub app_label: Option<String>,
+    /// 0x87: Application Priority Indicator.
+    pub app_prio: Option<AppPriority>,
+    /// 0x5F2D, an2-8: Language Preference. 1-4 alpha2 ISO 639 language codes, in order of user preference.
+    /// Note: EMV recommends this tag be lowercase, but uppercase should be accepted by terminals as well.
+    pub lang_pref: Option<String>,
+    /// 0x9F11: Issuer Code Table Index. The code page that should be used to display application labels.
+    pub issuer_code_table_idx: Option<u8>,
+    /// 0x9F12: Application Preferred Name.
+    pub app_pref_name: Option<String>,
+    /// 0xBF0C: FCI Issuer Discretionary Data. The contents are a BER-encoded map.
+    pub fci_issuer: Option<HashMap<u32, Vec<u8>>>,
+    /// Unknown tags.
+    pub extra: HashMap<u32, Vec<u8>>,
+}
+
+impl AppFCIEMV {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut slf = Self::default();
+        for tvr in ber::iter(data) {
+            let (tag, value) = tvr?;
+            match tag {
+                0x50 => slf.app_label = Some(String::from_utf8_lossy(value).into()),
+                0x87 => slf.app_prio = value.first().map(|v| (*v).into()),
+                0x5F2D => slf.lang_pref = Some(String::from_utf8_lossy(value).into()),
+                0x9F11 => slf.issuer_code_table_idx = Some(*value.first().unwrap_or(&0)),
+                0x9F12 => slf.app_pref_name = Some(String::from_utf8_lossy(value).into()),
+                0xBF0C => slf.fci_issuer = Some(ber::iter(value).to_map()?),
+                _ => {
+                    slf.extra.insert(tag, value.into());
+                }
+            }
+        }
+        Ok(slf)
     }
 }
 
@@ -64,7 +135,7 @@ impl Environment {
     }
 
     pub fn dir_records<'a, C: Card>(&self, card: &'a C) -> RecordIter<'a, C, DirectoryRecord> {
-        RecordIter::new(card, self.fci.fci_proprietary.dir_sfi)
+        RecordIter::new(card, self.fci.emv.dir_sfi)
     }
 }
 
@@ -82,7 +153,7 @@ pub struct EnvironmentFCI {
     pub df_name: String,
 
     /// 0xA5: EMV proprietary data.
-    pub fci_proprietary: EnvironmentFCIProprietary,
+    pub emv: EnvironmentFCIProprietary,
 
     /// Unknown tags.
     pub extra: HashMap<u32, Vec<u8>>,
@@ -95,7 +166,7 @@ impl EnvironmentFCI {
             let (tag, value) = tvr?;
             match tag {
                 0x84 => slf.df_name = String::from_utf8_lossy(value).into(),
-                0xA5 => slf.fci_proprietary = EnvironmentFCIProprietary::parse(value)?,
+                0xA5 => slf.emv = EnvironmentFCIProprietary::parse(value)?,
                 _ => {
                     slf.extra.insert(tag, value.into());
                 }
