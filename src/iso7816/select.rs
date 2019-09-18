@@ -19,6 +19,11 @@ impl AID {
         }
     }
 
+    /// Returns a Select command for this AID.
+    pub fn select(self) -> Select {
+        self.into()
+    }
+
     pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, u8> {
         match self {
             Self::ID(data) => data.iter(),
@@ -63,6 +68,12 @@ impl Into<Vec<u8>> for AID {
             Self::ID(v) => v,
             Self::Name(v) => v,
         }
+    }
+}
+
+impl Into<Select> for AID {
+    fn into(self) -> Select {
+        Select::new(self)
     }
 }
 

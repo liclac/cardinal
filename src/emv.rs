@@ -1,37 +1,42 @@
 use crate::ber;
 use crate::errors::{Error, Result};
-use crate::iso7816::{RecordIter, Select};
+use crate::iso7816::{RecordIter, Select, AID};
 use crate::{Card, RAPDU};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::{From, TryFrom};
 
-#[derive(Debug)]
-pub struct Environment<'a, C: Card> {
-    pub card: &'a C,
-    pub data: EnvironmentData,
+#[derive(Default, Debug, Serialize, Eq, PartialEq)]
+pub struct App {
+    /// Unknown tags.
+    pub extra: HashMap<u32, Vec<u8>>,
 }
 
-impl<'a, C: Card> Environment<'a, C> {
-    pub fn new(card: &'a C) -> Self {
-        Self {
-            card,
-            data: EnvironmentData::default(),
+impl App {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut slf = Self::default();
+        for tvr in ber::iter(data) {
+            let (tag, value) = tvr?;
+            match tag {
+                _ => {
+                    slf.extra.insert(tag, value.into());
+                }
+            }
         }
+        Ok(slf)
     }
+}
 
-    pub fn select(mut self) -> Result<Self> {
-        self.data = self.card.call(Select::name("1PAY.SYS.DDF01"))?;
-        Ok(self)
-    }
+impl TryFrom<RAPDU> for App {
+    type Error = Error;
 
-    pub fn dir_records(&self) -> RecordIter<'a, C, DirectoryRecord> {
-        RecordIter::new(self.card, self.data.fci.fci_proprietary.dir_sfi)
+    fn try_from(res: RAPDU) -> Result<Self> {
+        Self::parse(&res.data)
     }
 }
 
 #[derive(Debug, Default, Serialize, PartialEq, Eq)]
-pub struct EnvironmentData {
+pub struct Environment {
     /// 0x6F: ISO7816 File Control Information.
     pub fci: EnvironmentFCI,
 
@@ -39,12 +44,14 @@ pub struct EnvironmentData {
     pub extra: HashMap<u32, Vec<u8>>,
 }
 
-impl TryFrom<RAPDU> for EnvironmentData {
-    type Error = Error;
+impl Environment {
+    pub fn select() -> Select<Self> {
+        Select::name("1PAY.SYS.DDF01")
+    }
 
-    fn try_from(res: RAPDU) -> Result<Self> {
+    pub fn parse(data: &[u8]) -> Result<Self> {
         let mut slf = Self::default();
-        for tvr in ber::iter(&res.data) {
+        for tvr in ber::iter(&data) {
             let (tag, value) = tvr?;
             match tag {
                 0x6F => slf.fci = EnvironmentFCI::parse(value)?,
@@ -54,6 +61,18 @@ impl TryFrom<RAPDU> for EnvironmentData {
             };
         }
         Ok(slf)
+    }
+
+    pub fn dir_records<'a, C: Card>(&self, card: &'a C) -> RecordIter<'a, C, DirectoryRecord> {
+        RecordIter::new(card, self.fci.fci_proprietary.dir_sfi)
+    }
+}
+
+impl TryFrom<RAPDU> for Environment {
+    type Error = Error;
+
+    fn try_from(res: RAPDU) -> Result<Self> {
+        Self::parse(&res.data)
     }
 }
 

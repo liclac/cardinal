@@ -145,6 +145,15 @@ impl Status {
 /// Higher-level trait for card commands.
 pub trait Command: Into<APDU> {
     type Response: TryFrom<RAPDU>;
+
+    /// Executes this command against a card, and returns the response.
+    /// This is a convenience function for doing `card.call(self)`.
+    fn call<C: Card>(self, card: &C) -> Result<Self::Response>
+    where
+        Error: From<<Self::Response as TryFrom<RAPDU>>::Error>,
+    {
+        card.call(self)
+    }
 }
 
 impl Command for APDU {
@@ -167,6 +176,7 @@ pub trait Card: std::fmt::Debug {
     }
 
     /// Executes a command against the card, and returns the response.
+    /// If it makes your code flow better, you can also do `cmd.call(card)`.
     fn call<C: Command>(&self, req: C) -> Result<C::Response>
     where
         Error: From<<C::Response as TryFrom<RAPDU>>::Error>,

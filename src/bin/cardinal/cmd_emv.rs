@@ -1,23 +1,27 @@
 use crate::errors::Result;
 use crate::{dump, find_card, Opt};
 use cardinal::errors::Result as CResult;
-use cardinal::{emv, Card};
+use cardinal::{emv, Card, Command as CommandTrait};
 use serde::Serialize;
 use structopt::StructOpt;
 use tracing::{debug, info, span, Level};
 
 #[derive(Default, Debug, Serialize)]
 pub struct Dump {
-    pub environment: emv::EnvironmentData,
+    pub environment: emv::Environment,
     pub directory: Vec<emv::DirectoryRecord>,
 }
 
 impl Dump {
     pub fn collect<C: Card>(card: &C) -> Result<Self> {
-        let pse = emv::Environment::new(card).select()?;
-        let psd = pse.dir_records().collect::<CResult<_>>()?;
+        // Select the PSE (Payment System Environment), which we can use to list applications.
+        let pse = emv::Environment::select().call(card)?;
+
+        // The PSD is supposed to consist of a single record, but as always, don't trust that.
+        let psd = pse.dir_records(card).collect::<CResult<Vec<_>>>()?;
+
         Ok(Self {
-            environment: pse.data,
+            environment: pse,
             directory: psd,
         })
     }
@@ -33,11 +37,11 @@ fn cmd_ls(opt: &Opt) -> Result<()> {
     let card = find_card(opt)?;
 
     debug!("SELECT 1PAY.SYS.DDF01");
-    let pse = emv::Environment::new(&card).select()?;
+    let pse = emv::Environment::select().call(&card)?;
     info!("{:#02x?}", pse);
 
     debug!("READ RECORD ...");
-    for recr in pse.dir_records() {
+    for recr in pse.dir_records(&card) {
         let rec = recr?;
         info!("{:#02x?}", rec);
         for entry in rec.record.entries {
