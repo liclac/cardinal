@@ -109,7 +109,7 @@ impl Occurrence {
     }
 }
 
-pub struct Select<R: TryFrom<RAPDU> = ()> {
+pub struct Select<R: TryFrom<RAPDU> = RAPDU> {
     pub aid: AID,
     pub occurrence: Occurrence,
     _response: PhantomData<R>,
