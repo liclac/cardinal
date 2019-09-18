@@ -20,7 +20,7 @@ impl AID {
     }
 
     /// Returns a Select command for this AID.
-    pub fn select(self) -> Select {
+    pub fn select<T: TryFrom<RAPDU>>(self) -> Select<T> {
         self.into()
     }
 
@@ -71,8 +71,8 @@ impl Into<Vec<u8>> for AID {
     }
 }
 
-impl Into<Select> for AID {
-    fn into(self) -> Select {
+impl<T: TryFrom<RAPDU>> Into<Select<T>> for AID {
+    fn into(self) -> Select<T> {
         Select::new(self)
     }
 }
