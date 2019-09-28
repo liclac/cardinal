@@ -1,7 +1,7 @@
 use crate::ber;
 use crate::errors::{Error, Result};
 use crate::iso7816::{RecordIter, Select, AID};
-use crate::{Card, RAPDU};
+use crate::{Card, Value, RAPDU};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::{From, TryFrom};
@@ -71,7 +71,7 @@ pub struct AppFCIEMV {
     /// 0x50: Application Label.
     pub app_label: Option<String>,
     /// 0x87: Application Priority Indicator.
-    pub app_prio: Option<AppPriority>,
+    pub app_prio: Option<Value<AppPriority>>,
     /// 0x5F2D, an2-8: Language Preference. 1-4 alpha2 ISO 639 language codes, in order of user preference.
     /// Note: EMV recommends this tag be lowercase, but uppercase should be accepted by terminals as well.
     pub lang_pref: Option<String>,
@@ -92,7 +92,7 @@ impl AppFCIEMV {
             let (tag, value) = tvr?;
             match tag {
                 0x50 => slf.app_label = Some(String::from_utf8_lossy(value).into()),
-                0x87 => slf.app_prio = value.first().map(|v| (*v).into()),
+                0x87 => slf.app_prio = Some(Value::new(value, AppPriority::parse(value)?)),
                 0x5F2D => slf.lang_pref = Some(String::from_utf8_lossy(value).into()),
                 0x9F11 => slf.issuer_code_table_idx = Some(*value.first().unwrap_or(&0)),
                 0x9F12 => slf.app_pref_name = Some(String::from_utf8_lossy(value).into()),
@@ -280,7 +280,7 @@ pub struct DirectoryRecordEntry {
     /// 0x9F12: Application Preferred Name.
     pub app_pref_name: Option<String>,
     /// 0x87: Application Priority Indicator.
-    pub app_prio: Option<AppPriority>,
+    pub app_prio: Option<Value<AppPriority>>,
     /// 0x73: Directory Discretionary Template. Proprietary data from the application provider,
     ///       eg. Mastercard/Visa, chip manufacturer, or a handful of EMV-defined tags [TODO].
     pub discretionary: HashMap<u32, Vec<u8>>,
@@ -298,7 +298,7 @@ impl DirectoryRecordEntry {
                 0x4F => slf.adf_name = AID::Name(value.into()),
                 0x50 => slf.app_label = String::from_utf8_lossy(value).into(),
                 0x9F12 => slf.app_pref_name = Some(String::from_utf8_lossy(value).into()),
-                0x87 => slf.app_prio = value.first().map(|v| (*v).into()),
+                0x87 => slf.app_prio = Some(Value::new(value, AppPriority::parse(value)?)),
                 0x73 => slf.discretionary = ber::iter(value).to_map()?,
                 _ => {
                     slf.extra.insert(tag, value.into());
@@ -309,6 +309,7 @@ impl DirectoryRecordEntry {
     }
 }
 
+/// 0x87, n-1 - Application Priority Indicator.
 #[derive(Default, Debug, Serialize, PartialEq, Eq)]
 pub struct AppPriority {
     /// Bit 1-4: Number in the priority list (1-15).
@@ -320,6 +321,14 @@ pub struct AppPriority {
 }
 
 impl AppPriority {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        Ok(data
+            .first()
+            .map(|v| *v)
+            .ok_or("0x87: Application Priority Indicator truncated")?
+            .into())
+    }
+
     pub fn new(num: u8, rfu: u8, noauto: bool) -> Self {
         Self { num, rfu, noauto }
     }

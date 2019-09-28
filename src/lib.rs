@@ -7,7 +7,9 @@ pub mod protocol;
 pub mod util;
 
 use crate::errors::{Error, ErrorKind, Result};
+use serde::Serialize;
 use std::convert::{TryFrom, TryInto};
+use std::fmt::Debug;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct APDU {
@@ -182,5 +184,20 @@ pub trait Card: std::fmt::Debug {
         Error: From<<C::Response as TryFrom<RAPDU>>::Error>,
     {
         Ok(self.exec(req.into())?.try_into()?)
+    }
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct Value<T: Debug + Serialize + Eq> {
+    pub raw: Vec<u8>,
+    pub parsed: T,
+}
+
+impl<T: Debug + Serialize + Eq> Value<T> {
+    pub fn new<R: Into<Vec<u8>>>(raw: R, parsed: T) -> Self {
+        Self {
+            raw: raw.into(),
+            parsed,
+        }
     }
 }
