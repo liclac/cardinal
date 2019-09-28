@@ -80,7 +80,7 @@ pub struct AppFCIEMV {
     /// 0x9F12: Application Preferred Name.
     pub app_pref_name: Option<String>,
     /// 0xBF0C: FCI Issuer Discretionary Data. The contents are a BER-encoded map.
-    pub fci_issuer: Option<HashMap<u32, Vec<u8>>>,
+    pub fci_issuer: Option<AppFCIIssuer>,
     /// Unknown tags.
     pub extra: HashMap<u32, Vec<u8>>,
 }
@@ -96,13 +96,63 @@ impl AppFCIEMV {
                 0x5F2D => slf.lang_pref = Some(String::from_utf8_lossy(value).into()),
                 0x9F11 => slf.issuer_code_table_idx = Some(*value.first().unwrap_or(&0)),
                 0x9F12 => slf.app_pref_name = Some(String::from_utf8_lossy(value).into()),
-                0xBF0C => slf.fci_issuer = Some(ber::iter(value).to_map()?),
+                0xBF0C => slf.fci_issuer = Some(AppFCIIssuer::parse(value)?),
                 _ => {
                     slf.extra.insert(tag, value.into());
                 }
             }
         }
         Ok(slf)
+    }
+}
+
+#[derive(Default, Debug, Serialize, Eq, PartialEq)]
+pub struct AppFCIIssuer {
+    /// 0x9F4D: Log Entry.
+    pub log_entry: Option<Value<IssuerLogEntry>>,
+    /// Unknown tags.
+    pub extra: HashMap<u32, Vec<u8>>,
+}
+
+impl AppFCIIssuer {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut slf = Self::default();
+        for tvr in ber::iter(data) {
+            let (tag, value) = tvr?;
+            match tag {
+                0x9F4D => slf.log_entry = Some(Value::new(value, IssuerLogEntry::parse(value)?)),
+                _ => {
+                    slf.extra.insert(tag, value.into());
+                }
+            }
+        }
+        Ok(slf)
+    }
+}
+
+/// 0x9F4D, b-2 - Log Entry.
+///
+/// > Provides the SFI of the Transaction Log file and its number of records
+/// -- EMV Book 3.
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
+pub struct IssuerLogEntry {
+    pub sfi: u8,
+    pub num: u8,
+}
+
+impl IssuerLogEntry {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        // TODO: Add nom support to our regular error type so I can use it here.
+        let (sfi, data) = data
+            .split_first()
+            .ok_or("0x9F4D Log Entry truncated: no SFI")?;
+        let (num, _data) = data
+            .split_first()
+            .ok_or("0x9F4D Log Entry truncated: no number")?;
+        Ok(Self {
+            sfi: *sfi,
+            num: *num,
+        })
     }
 }
 
