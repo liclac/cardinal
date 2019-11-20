@@ -20,14 +20,17 @@ impl TryFrom<pcsc::Protocol> for Protocol {
 pub struct Card {
     pub card: pcsc::Card,
     pub proto: Protocol,
+    pub raw_atr: Vec<u8>,
 }
 
 impl Card {
     pub fn wrap(card: pcsc::Card) -> Result<Self> {
         let (_status, proto) = card.status()?;
+        let raw_atr = pcsc_attr(&card, pcsc::Attribute::AtrString)?;
         Ok(Self {
             card,
             proto: proto.try_into()?,
+            raw_atr,
         })
     }
 }
@@ -51,4 +54,11 @@ impl std::fmt::Debug for Card {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "pcsc::Card {{ proto: {:#?} }}", self.proto)
     }
+}
+
+fn pcsc_attr(card: &pcsc::Card, attr: pcsc::Attribute) -> Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(card.get_attribute_len(attr)?);
+    buf.resize(buf.capacity(), 0);
+    card.get_attribute(attr, &mut buf[..])?;
+    Ok(buf)
 }

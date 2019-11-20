@@ -122,7 +122,18 @@ pub fn find_card(opt: &Opt) -> Result<PCard> {
         "pcsc::Context::connect()"
     );
     let card = ctx.connect(cname, pcsc::ShareMode::Shared, pcsc::Protocols::ANY)?;
-    Ok(PCard::wrap(card)?)
+    let pcard = PCard::wrap(card)?;
+    debug!(
+        "Card ATR: {:}",
+        pcard
+            .raw_atr
+            .iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<String>>()
+            .join("")
+    );
+
+    Ok(pcard)
 }
 
 fn init_logging(opt: &Opt) -> Result<()> {
