@@ -1,13 +1,12 @@
 mod cmd_emv;
 
-use cardinal::pcsc::Card as PCard;
+use cardinal::{pcsc, Card, Context};
 use error_chain::quick_main;
-use pcsc;
 use serde;
 use serde_json;
-use std::ffi::CString;
+use std::str::FromStr;
 use structopt::StructOpt;
-use tracing::{debug, span, trace, Level};
+use tracing::{span, Level};
 
 mod errors {
     use error_chain::error_chain;
@@ -24,10 +23,10 @@ mod errors {
 }
 use errors::Result;
 
-fn cmd_readers(_opt: &Opt) -> Result<()> {
-    let (_, readers) = list_cards()?;
+fn cmd_readers(opt: &Opt) -> Result<()> {
+    let readers = establish_ctx(opt)?.readers()?;
     for (i, reader) in readers.iter().enumerate() {
-        println!("{:3}  {:}", i, reader.to_string_lossy());
+        println!("{:3}  {:}", i, reader.name());
     }
     Ok(())
 }
@@ -55,6 +54,22 @@ impl Command {
     }
 }
 
+#[derive(Debug, StructOpt, PartialEq, Eq)]
+pub enum Interface {
+    PCSC,
+}
+
+impl FromStr for Interface {
+    type Err = errors::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "pcsc" => Ok(Self::PCSC),
+            _ => Err(format!("unknown interface: {:}", s).into()),
+        }
+    }
+}
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cardinal", about = "The Swiss army knife of smartcards")]
 pub struct Opt {
@@ -62,8 +77,12 @@ pub struct Opt {
     /// Zero-indexed reader number, if you have multiple.
     reader_num: usize,
 
+    #[structopt(short = "i", long = "interface", default_value = "pcsc")]
+    /// Transport interface to use. (pcsc)
+    interface: Interface,
+
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
-    /// Every time you -v, it gets noisier (up to -vvv)
+    /// Every time you -v, it gets noisier (up to -vvv).
     verbosity: u8,
 
     #[structopt(short = "j", long = "json")]
@@ -84,56 +103,24 @@ pub fn dump<V: serde::Serialize + std::fmt::Debug>(opt: &Opt, value: &V) -> Resu
     Ok(())
 }
 
-pub fn list_cards() -> Result<(pcsc::Context, Vec<CString>)> {
-    let span = span!(Level::TRACE, "list_cards");
-    let _enter = span.enter();
-
-    debug!("Connecting to PCSC...");
-    trace!({ scope = "user" }, "pcsc::Context::establish()");
-    let ctx = pcsc::Context::establish(pcsc::Scope::User)?;
-
-    debug!("Listing readers...");
-    trace!("pcsc::Context::list_readers_len()");
-    let mut reader_buf = Vec::with_capacity(ctx.list_readers_len()?);
-    reader_buf.resize(reader_buf.capacity(), 0);
-    trace!(
-        { buf_len = reader_buf.capacity() },
-        "pcsc::Context::list_readers()"
-    );
-    let readers = ctx.list_readers(&mut reader_buf)?;
-    Ok((ctx, readers.map(|s| s.into()).collect()))
+pub fn establish_ctx(opt: &Opt) -> Result<Box<dyn Context>> {
+    Ok(Box::new(match opt.interface {
+        Interface::PCSC => pcsc::Context::establish(::pcsc::Scope::User)?,
+    }))
 }
 
-pub fn find_card(opt: &Opt) -> Result<PCard> {
+pub fn find_card(opt: &Opt) -> Result<Box<dyn Card>> {
     let span = span!(Level::TRACE, "find_card");
     let _enter = span.enter();
 
-    let (ctx, readers) = list_cards()?;
-    let cname = readers
+    let ctx = establish_ctx(&opt)?;
+    let readers = ctx.readers()?;
+    let reader = readers
         .iter()
         .skip(opt.reader_num)
         .next()
-        .ok_or(pcsc::Error::ReaderUnavailable)?;
-    let name = cname.to_str()?;
-
-    debug!({ name }, "Connecting to reader...");
-    trace!(
-        { name, sharing_mode=?pcsc::ShareMode::Shared, protocols=?pcsc::Protocols::ANY },
-        "pcsc::Context::connect()"
-    );
-    let card = ctx.connect(cname, pcsc::ShareMode::Shared, pcsc::Protocols::ANY)?;
-    let pcard = PCard::wrap(card)?;
-    debug!(
-        "Card ATR: {:}",
-        pcard
-            .raw_atr
-            .iter()
-            .map(|b| format!("{:02X}", b))
-            .collect::<Vec<String>>()
-            .join("")
-    );
-
-    Ok(pcard)
+        .ok_or(::pcsc::Error::ReaderUnavailable)?;
+    Ok(reader.connect()?)
 }
 
 fn init_logging(opt: &Opt) -> Result<()> {

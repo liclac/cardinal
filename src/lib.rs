@@ -9,7 +9,8 @@ pub mod util;
 use crate::errors::{Error, ErrorKind, Result};
 use serde::Serialize;
 use std::convert::{TryFrom, TryInto};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
+use std::ops::Deref;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct APDU {
@@ -163,7 +164,7 @@ impl Command for APDU {
 }
 
 /// A higher-level interface around a smartcard reader.
-pub trait Card: std::fmt::Debug {
+pub trait Card: Debug {
     fn exec_impl(&self, req: &APDU) -> Result<RAPDU>;
 
     /// Executes an APDU against the card, and returns the response.
@@ -176,15 +177,27 @@ pub trait Card: std::fmt::Debug {
             x => Err(ErrorKind::APDU(x).into()),
         }
     }
+}
 
-    /// Executes a command against the card, and returns the response.
-    /// If it makes your code flow better, you can also do `cmd.call(card)`.
-    fn call<C: Command>(&self, req: C) -> Result<C::Response>
-    where
-        Error: From<<C::Response as TryFrom<RAPDU>>::Error>,
-    {
-        Ok(self.exec(req.into())?.try_into()?)
+impl Card for Box<dyn Card> {
+    fn exec_impl(&self, req: &APDU) -> Result<RAPDU> {
+        self.deref().exec_impl(req)
     }
+}
+
+/// A reader entry, which can be used to connect to a smartcard.
+pub trait Reader: Debug + Display {
+    /// Returns the human readable name of the reader.
+    fn name(&self) -> &str;
+
+    /// Connects to a smartcard and returns the resulting Card.
+    fn connect(&self) -> Result<Box<dyn Card>>;
+}
+
+/// Abstraction around an interface-specific Context.
+pub trait Context {
+    /// Returns all connected readers.
+    fn readers(&self) -> Result<Vec<Box<dyn Reader>>>;
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
