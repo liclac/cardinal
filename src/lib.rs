@@ -154,7 +154,7 @@ pub trait Command: Into<APDU> {
     where
         Error: From<<Self::Response as TryFrom<RAPDU>>::Error>,
     {
-        card.call(self)
+        Ok(card.exec(self.into())?.try_into()?)
     }
 }
 

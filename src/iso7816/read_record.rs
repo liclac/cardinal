@@ -85,7 +85,7 @@ where
     type Item = Result<R, E>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let res = self.card.call(ReadRecord::num(self.sfi, self.num));
+        let res = ReadRecord::num(self.sfi, self.num).call(self.card);
         self.num += 1;
         if let Err(Error(ErrorKind::APDU(Status::RecordNotFound), _)) = res {
             return None;
