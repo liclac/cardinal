@@ -46,7 +46,7 @@ impl Command {
         let ctx = Context::establish(pcsc::Scope::User)?;
         let mut card = select_card(&ctx, &args.reader)?;
         debug!("Probing card...");
-        println!("{:?}", cardinal::probe::probe(&mut card)?);
+        println!("{:#04X?}", cardinal::probe::probe(&mut card)?);
         Ok(())
     }
 

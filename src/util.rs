@@ -30,12 +30,12 @@ pub(crate) fn call_apdu<'a>(
 
     cmd.write(wbuf);
     let req = &wbuf[..cmd.len()];
-    trace!(?req, ">> TX");
+    trace!(req = format!("{:02X?}", req), ">> TX");
 
     let rsp = card.transmit(req, rbuf)?;
-    trace!(?rsp, "<< RX");
     let l = rsp.len();
     let (sw1, sw2, data) = (rsp[l - 2], rsp[l - 1], &rsp[..l - 2]);
+    trace!(rsp = format!("{:02X?}", rsp), "<< RX");
 
     if (sw1, sw2) != (0x90, 0x00) {
         Err(Error::APDU(sw1, sw2))
