@@ -1,16 +1,16 @@
 use crate::{Error, Result};
 use tracing::{trace, trace_span};
 
-pub(crate) fn call_le<'a>(
+pub(crate) fn call_le<'w, 'r>(
     card: &mut pcsc::Card,
-    wbuf: &'a mut [u8],
-    rbuf: &'a mut [u8],
+    wbuf: &'w mut [u8],
+    rbuf: &'r mut [u8],
     cla: u8,
     ins: u8,
     p1: u8,
     p2: u8,
     le: u16,
-) -> Result<&'a [u8]> {
+) -> Result<&'r [u8]> {
     call_apdu(
         card,
         wbuf,
@@ -19,12 +19,12 @@ pub(crate) fn call_le<'a>(
     )
 }
 
-pub(crate) fn call_apdu<'a>(
+pub(crate) fn call_apdu<'w, 'r>(
     card: &mut pcsc::Card,
-    wbuf: &'a mut [u8],
-    rbuf: &'a mut [u8],
+    wbuf: &'w mut [u8],
+    rbuf: &'r mut [u8],
     cmd: apdu::Command,
-) -> Result<&'a [u8]> {
+) -> Result<&'r [u8]> {
     let span = trace_span!("call_apdu");
     let _enter = span.enter();
 

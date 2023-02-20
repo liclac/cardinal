@@ -2,7 +2,7 @@ use pcsc::Card;
 use tracing::{debug, trace_span, warn};
 
 use crate::util::call_le;
-use crate::Result;
+use crate::{iso7816, Result};
 
 #[derive(Debug)]
 pub struct Probe {
@@ -15,6 +15,9 @@ pub struct Probe {
 
     /// Reader attributes (from PCSC).
     pub reader: ReaderAttrs,
+
+    /// EMV payment system data.
+    pub emv: Option<EMV>,
 }
 
 #[derive(Debug)]
@@ -34,6 +37,7 @@ pub fn probe(card: &mut Card) -> Result<Probe> {
         cid: probe_cid(card, &mut wbuf, &mut rbuf),
         atr: probe_atr(card),
         reader: probe_reader_attrs(card, &mut rbuf),
+        emv: probe_emv(card, &mut wbuf, &mut rbuf),
     })
 }
 
@@ -97,4 +101,29 @@ fn probe_reader_attrs(card: &mut Card, rbuf: &mut [u8]) -> ReaderAttrs {
             })
             .ok(),
     }
+}
+
+#[derive(Debug)]
+pub struct EMV {}
+
+fn probe_emv(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<EMV> {
+    let span = trace_span!("probe_emv");
+    let _enter = span.enter();
+
+    iso7816::select(
+        card,
+        wbuf,
+        rbuf,
+        iso7816::SelectMode::First,
+        iso7816::SelectID::Name("1PAY.SYS.DDF01"),
+    )
+    .map_err(|err| {
+        warn!(
+            name = "1PAY.SYS.DDF01",
+            "couln't select EMV payment directory: {}", err
+        );
+        err
+    });
+
+    None
 }

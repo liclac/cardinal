@@ -1,3 +1,4 @@
+pub mod iso7816;
 pub mod probe;
 mod util;
 
