@@ -1,3 +1,4 @@
+use der_parser::ber::parse_ber;
 use pcsc::Card;
 use tracing::{debug, trace_span, warn};
 
@@ -110,20 +111,21 @@ fn probe_emv(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<EMV> {
     let span = trace_span!("probe_emv");
     let _enter = span.enter();
 
-    iso7816::select(
-        card,
-        wbuf,
-        rbuf,
-        iso7816::SelectMode::First,
-        iso7816::SelectID::Name("1PAY.SYS.DDF01"),
-    )
-    .map_err(|err| {
-        warn!(
+    match (iso7816::Select {
+        id: iso7816::SelectID::Name("1PAY.SYS.DDF01"),
+        mode: iso7816::SelectMode::First,
+    })
+    .exec(card, wbuf, rbuf)
+    {
+        Ok(data) => {
+            let (_, blob) = parse_ber(data).unwrap();
+            println!("{:#04X?}", blob);
+        }
+        Err(err) => warn!(
             name = "1PAY.SYS.DDF01",
             "couln't select EMV payment directory: {}", err
-        );
-        err
-    });
+        ),
+    }
 
     None
 }
