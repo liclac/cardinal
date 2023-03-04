@@ -1,3 +1,4 @@
+pub mod emv;
 pub mod iso7816;
 pub mod probe;
 mod util;
@@ -10,13 +11,11 @@ pub enum Error {
     #[error("error from card: SW1=0x{0:X} SW2=0x{1:X}")]
     APDU(u8, u8),
 
-    #[error("expected tag {expected:#04?}, got {actual:#04?}")]
-    WrongTag { expected: u32, actual: u32 },
+    #[error("expected tag {expected:04X?}, got {actual:04X?}")]
+    WrongTag { expected: Vec<u8>, actual: Vec<u8> },
 
     #[error(transparent)]
-    DER(#[from] der_parser::error::Error),
-    #[error(transparent)]
-    DERASN1(#[from] der_parser::asn1_rs::Err<der_parser::error::Error>),
+    BSN1(#[from] bsn1::Error),
 
     #[error(transparent)]
     PCSC(#[from] pcsc::Error),

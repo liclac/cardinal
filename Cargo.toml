@@ -10,7 +10,7 @@ tracing = "0.1"
 thiserror = "1.0"
 pcsc = "2"
 apdu = "0.4"
-der-parser = "8"
+bsn1 = "1.0"
 
 # CLI
 clap = { version = "4", features = [ "derive" ] }

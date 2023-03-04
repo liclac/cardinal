@@ -1,4 +1,3 @@
-use der_parser::ber::parse_ber;
 use pcsc::Card;
 use tracing::{debug, trace_span, warn};
 
@@ -118,7 +117,7 @@ fn probe_emv(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<EMV> {
     .exec(card, wbuf, rbuf)
     {
         Ok(data) => {
-            let (_, blob) = parse_ber(data).unwrap();
+            let blob = iso7816::SelectResponse::parse(data).unwrap();
             println!("{:#04X?}", blob);
         }
         Err(err) => warn!(

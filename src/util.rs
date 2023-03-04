@@ -44,19 +44,13 @@ pub(crate) fn call_apdu<'w, 'r>(
     }
 }
 
-pub(crate) fn expect_tag(expected: u32, actual: Option<&[u8]>) -> Result<u32> {
-    let actual = actual
-        .map(|raw| {
-            let (b1, raw) = raw.split_first().unwrap_or((&0x00, &[]));
-            let (b2, raw) = raw.split_first().unwrap_or((&0x00, &[]));
-            let (b3, raw) = raw.split_first().unwrap_or((&0x00, &[]));
-            let (b4, _) = raw.split_first().unwrap_or((&0x00, &[]));
-            u32::from_le_bytes([*b1, *b2, *b3, *b4])
-        })
-        .unwrap_or(0x00);
+pub(crate) fn expect_tag<'a>(expected: &'a [u8], actual: &'a [u8]) -> Result<&'a [u8]> {
     if expected == actual {
         Ok(expected)
     } else {
-        Err(crate::Error::WrongTag { expected, actual })
+        Err(crate::Error::WrongTag {
+            expected: expected.into(),
+            actual: actual.into(),
+        })
     }
 }
