@@ -63,8 +63,11 @@ pub struct SelectResponse<'a> {
 
 impl<'a> SelectResponse<'a> {
     pub fn parse(data: &'a [u8]) -> Result<Self> {
+        let wrapper = BerRef::try_from_bytes(data)?;
+        util::expect_tag(&[0x6F], wrapper.id().as_bytes())?;
+
         Ok(Self {
-            fci: FileControlInfo::parse(data)?,
+            fci: FileControlInfo::parse(wrapper.contents().as_bytes())?,
         })
     }
 }
@@ -84,21 +87,18 @@ pub struct FileControlInfo<'a> {
 
 impl<'a> FileControlInfo<'a> {
     pub fn parse(data: &'a [u8]) -> Result<Self> {
-        let wrapper = BerRef::try_from_bytes(data)?;
-        util::expect_tag(&[0x6F], wrapper.id().as_bytes())?;
-
         let mut slf = Self::default();
-        let mut inner = wrapper.contents().as_bytes();
+        let mut data = data;
         loop {
-            let field = BerRef::try_from_bytes(inner)?;
+            let field = BerRef::try_from_bytes(data)?;
             match field.id().as_bytes() {
                 &[0x84] => slf.df_name = field.contents().as_bytes(),
                 &[0xA5] => slf.pt = Some(field.contents().as_bytes()),
                 id @ _ => warn!("FileControlInfo contains unknown field: {:X?}", id),
             }
 
-            inner = &inner[field.as_bytes().len()..];
-            if inner.len() == 0 {
+            data = &data[field.as_bytes().len()..];
+            if data.len() == 0 {
                 break;
             }
         }
