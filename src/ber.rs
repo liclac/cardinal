@@ -51,25 +51,31 @@ fn take_tag(data: &[u8]) -> IResult<&[u8]> {
 }
 
 /// Parses a length field.
+///
+/// If bit 8 is not set (eg. the length is <= 127), it's taken verbatim.
+/// If bit 8 is set, bits 1-7 encode the number of subsequent bytes that encode the full
+/// length, in unsigned big endian. We support extended lengths from 1 (u8) to 8 (u64).
+///
+/// While it's technically valid in ISO 8825 to set bit 8 and an extended length of 0,
+/// for an "indeterminate length" value, this is not in the ISO 7816 or EMV subsets.
+///
+/// See EMV Book 3, Annex B2: "Coding of the Length Field of BER-TLV Data Objects".
 fn take_len(data_: &[u8]) -> IResult<usize> {
     let (data, lenlen) = be_u8(data_)?;
     if lenlen <= 127 {
         Ok((data, lenlen as usize))
     } else {
-        let lensize = (lenlen & 0b0111_1111) as usize;
+        let lenlen = (lenlen & 0b0111_1111) as usize;
         // Error out if the length is too large for the target architecture, or if
         // it's indeterminate (0b1000_0000). Indeterminate lengths are technically
         // valid BER according to ISO 8825, but not allowed in ISO 7816 or EMV.
-        if lensize < 1 || lensize > 8 {
+        if lenlen < 1 || lenlen > 8 {
             Err(nom::Err::Error(nom::error::Error::new(
                 data_, // Return the full input!
                 nom::error::ErrorKind::TooLarge,
             )))
         } else {
-            Ok((
-                &data[lensize..],
-                BigEndian::read_uint(data, lensize) as usize,
-            ))
+            Ok((&data[lenlen..], BigEndian::read_uint(data, lenlen) as usize))
         }
     }
 }
