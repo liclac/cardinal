@@ -24,6 +24,9 @@ pub struct Directory {
     /// 0x9F11: Issuer Code Table Index. (n2, 1)
     /// ISO/IEC 8859 code table for displaying the Application Preferred Name.
     pub issuer_code_table_idx: Option<u8>,
+
+    /// 0xBF0C: FCI Issuer Discretionary Data. (var, <=222)
+    pub fci_issuer_discretionary_data: Option<Vec<u8>>,
 }
 
 impl<'a> Directory {
@@ -46,6 +49,7 @@ impl<'a> TryFrom<&'a [u8]> for Directory {
                 &[0x88] => slf.ef_sfi = *value.first().unwrap_or(&0),
                 &[0x5F, 0x2D] => slf.lang_prefs = Some(String::from_utf8_lossy(value).into()),
                 &[0x9F, 0x11] => slf.issuer_code_table_idx = Some(*value.first().unwrap_or(&0)),
+                &[0xBF, 0x0C] => slf.fci_issuer_discretionary_data = Some(value.into()),
                 _ => warn!("EMV Directory contains unknown field: {:X?}", tag),
             }
         }
