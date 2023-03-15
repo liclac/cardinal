@@ -14,11 +14,8 @@
 //! written using the EMV specs rather than ISO 7816 or ISO 8825 unless otherwise noted.
 
 use byteorder::{BigEndian, ByteOrder};
-use nom::branch::alt;
-use nom::bytes::complete::{take, take_while1};
-use nom::combinator::{recognize, verify};
+use nom::bytes::complete::take;
 use nom::number::complete::be_u8;
-use nom::sequence::tuple;
 
 pub type IResult<'a, T> = nom::IResult<&'a [u8], T>;
 
@@ -37,9 +34,20 @@ pub fn is_constructed(tag: &[u8]) -> bool {
 ///
 /// See EMV Book 3, Annex B1: "Coding of the Tag Field of BER-TLV Data Objects".
 fn take_tag(data: &[u8]) -> IResult<&[u8]> {
-    let short_tag = recognize(verify(be_u8, |v| v & 0b0001_1111 != 0b0001_1111));
-    let long_tag = recognize(tuple((be_u8, take_while1(|v: u8| v & (1 << 7) == 0))));
-    alt((short_tag, long_tag))(data)
+    let (rest, short) = take(1usize)(data)?;
+    if short[0] & 0b0001_1111 != 0b0001_1111 {
+        Ok((rest, short))
+    } else {
+        let mut tag_len = 2usize;
+        for b in rest {
+            if b & (1 << 7) != 0 {
+                tag_len += 1;
+            } else {
+                break;
+            }
+        }
+        take(tag_len)(data)
+    }
 }
 
 /// Parses a length field.
@@ -98,16 +106,23 @@ mod tests {
     #[test]
     fn test_take_tag_0x6f() {
         assert_eq!(
-            take_tag(&[0x6F, 0xFF]).expect("couldn't take tag 0x6F"),
+            take_tag(&[0x6F, 0xFF]).expect("couldn't take tag"),
             (&[0xFF][..], &[0x6F][..])
         );
     }
     #[test]
     fn test_take_tag_0xbf0c() {
         assert_eq!(
-            take_tag(&[0xBF, 0x0C, 0xFF]).expect("couldn't take tag 0x6F"),
-            (&[0xFF][..], &[0xBF, 0x0C][..])
+            take_tag(&[0xBF, 0x0C, 0x00]).expect("couldn't take tag"),
+            (&[0x00][..], &[0xBF, 0x0C][..])
         );
+    }
+    #[test]
+    fn test_take_tag_0x5f2d() {
+        let (rest, tag) =
+            take_tag(&[0x5F, 0x2D, 0x02, 0x65, 0x6E, 0x9F]).expect("couldn't take tag");
+        assert_eq!(tag, &[0x5F, 0x2D]);
+        assert_eq!(rest, &[0x02, 0x65, 0x6E, 0x9F]);
     }
 
     #[test]
@@ -324,15 +339,14 @@ mod tests {
     #[test]
     fn test_parse_tlv_emv_dir() {
         // Response to `SELECT '1PAY.SYS.DDF01'` to a (Nitecrest) Monzo card.
-        let (_, (tag, val)) = parse_next(
-            &[
-                0x6F, 0x1E, 0x84, 0x0E, 0x31, 0x50, 0x41, 0x59, 0x2E, 0x53, 0x59, 0x53, 0x2E, 0x44,
-                0x44, 0x46, 0x30, 0x31, 0xA5, 0x0C, 0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E,
-                0x9F, 0x11, 0x01, 0x01,
-            ][..],
-        )
+        let (rest, (tag, val)) = parse_next(&[
+            0x6F, 0x1E, 0x84, 0x0E, 0x31, 0x50, 0x41, 0x59, 0x2E, 0x53, 0x59, 0x53, 0x2E, 0x44,
+            0x44, 0x46, 0x30, 0x31, 0xA5, 0x0C, 0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E,
+            0x9F, 0x11, 0x01, 0x01,
+        ])
         .expect("couldn't parse TLV");
-        assert_eq!(tag, &[0x6F][..]);
+        assert_eq!(tag, &[0x6F]);
+        assert_eq!(is_constructed(tag), true);
         assert_eq!(
             val,
             &[
@@ -341,5 +355,47 @@ mod tests {
                 0x01, 0x01
             ]
         );
+        assert_eq!(rest, &[]);
+
+        // Parse 0x6F - the FCI Template.
+        let (rest, (tag, val)) = parse_next(val).expect("couldn't parse 0x6F[0]");
+        assert_eq!(tag, &[0x84]);
+        assert_eq!(is_constructed(tag), false);
+        assert_eq!(val, "1PAY.SYS.DDF01".as_bytes());
+        assert_eq!(
+            rest,
+            &[0xA5, 0x0C, 0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E, 0x9F, 0x11, 0x01, 0x01]
+        );
+
+        let (rest, (tag, val)) = parse_next(rest).expect("couldn't parse 0x6F[1]");
+        assert_eq!(tag, &[0xA5]);
+        assert_eq!(is_constructed(tag), true);
+        assert_eq!(
+            val,
+            &[0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E, 0x9F, 0x11, 0x01, 0x01]
+        );
+        assert_eq!(rest, &[]);
+
+        // Parse 0xA5 - the FCI Proprietary Template.
+        let (rest, (tag, val)) = parse_next(val).expect("couldn't parse 0x6F[1] 0xA5[0]");
+        assert_eq!(tag, &[0x88]);
+        assert_eq!(is_constructed(tag), false);
+        assert_eq!(val, &[0x01]);
+        assert_eq!(
+            rest,
+            &[0x5F, 0x2D, 0x02, 0x65, 0x6E, 0x9F, 0x11, 0x01, 0x01]
+        );
+
+        let (rest, (tag, val)) = parse_next(rest).expect("couldn't parse 0x6F[1] 0xA5[1]");
+        assert_eq!(tag, &[0x5F, 0x2D]);
+        assert_eq!(is_constructed(tag), false);
+        assert_eq!(val, "en".as_bytes());
+        assert_eq!(rest, &[0x9F, 0x11, 0x01, 0x01]);
+
+        let (rest, (tag, val)) = parse_next(rest).expect("couldn't parse 0x6F[1] 0xA5[2]");
+        assert_eq!(tag, &[0x9F, 0x11]);
+        assert_eq!(is_constructed(tag), false);
+        assert_eq!(val, &[0x01]);
+        assert_eq!(rest, &[]);
     }
 }
