@@ -103,7 +103,7 @@ fn probe_reader_attrs(card: &mut Card, rbuf: &mut [u8]) -> ReaderAttrs {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct EMV {
     pub directory: Option<emv::Directory>,
 }
@@ -122,7 +122,7 @@ impl EMV {
             Err(err) => warn!("Couldn't select EMV payment directory: {}", err),
         }
 
-        if slf.directory.is_some() {
+        if slf != EMV::default() {
             Some(slf)
         } else {
             None
