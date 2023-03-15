@@ -26,7 +26,7 @@ pub struct Directory {
     pub issuer_code_table_idx: Option<u8>,
 
     /// 0xBF0C: FCI Issuer Discretionary Data. (var, <=222)
-    pub fci_issuer_discretionary_data: Option<Vec<u8>>,
+    pub fci_issuer_discretionary_data: Option<FCIIssuerDiscretionaryData>,
 }
 
 impl<'a> Directory {
@@ -49,8 +49,46 @@ impl<'a> TryFrom<&'a [u8]> for Directory {
                 &[0x88] => slf.ef_sfi = *value.first().unwrap_or(&0),
                 &[0x5F, 0x2D] => slf.lang_prefs = Some(String::from_utf8_lossy(value).into()),
                 &[0x9F, 0x11] => slf.issuer_code_table_idx = Some(*value.first().unwrap_or(&0)),
-                &[0xBF, 0x0C] => slf.fci_issuer_discretionary_data = Some(value.into()),
-                _ => warn!("EMV Directory contains unknown field: {:X?}", tag),
+                &[0xBF, 0x0C] => {
+                    slf.fci_issuer_discretionary_data = match value.try_into() {
+                        Ok(v) => Some(v),
+                        Err(err) => {
+                            warn!("couldn't parse 0xBF0C: {:}", err);
+                            None
+                        }
+                    }
+                }
+                _ => warn!("unknown field: {:X?}", tag),
+            }
+        }
+
+        Ok(slf)
+    }
+}
+
+/// 0xBF0C: FCI Issuer Discretionary Data. (var, <=222)
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct FCIIssuerDiscretionaryData {
+    /// 0x9F4D: Log Entry (SFI and number of records). (b, 2)
+    pub log_entry: Option<(u8, u8)>,
+}
+
+impl<'a> TryFrom<&'a [u8]> for FCIIssuerDiscretionaryData {
+    type Error = crate::Error;
+
+    fn try_from(data: &'a [u8]) -> Result<Self> {
+        let span = trace_span!("FCIIssuerDiscretionaryData");
+        let _enter = span.enter();
+
+        let mut slf = Self::default();
+        for res in ber::iter(data) {
+            let (tag, value) = res?;
+            match tag {
+                &[0x9F, 0x4D] => {
+                    slf.log_entry =
+                        Some((*value.first().unwrap_or(&0), *value.last().unwrap_or(&0)))
+                }
+                _ => warn!("unknown field: {:X?}", tag),
             }
         }
 
@@ -92,7 +130,9 @@ mod tests {
                 ef_sfi: 1,
                 lang_prefs: Some("en".into()),
                 issuer_code_table_idx: Some(1),
-                fci_issuer_discretionary_data: Some(vec![0x9F, 0x4D, 0x02, 0x0B, 0x0A]),
+                fci_issuer_discretionary_data: Some(FCIIssuerDiscretionaryData {
+                    log_entry: Some((11, 10)),
+                }),
             }
         );
     }
