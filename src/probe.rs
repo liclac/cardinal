@@ -110,7 +110,7 @@ pub struct EMV {
 
 impl EMV {
     fn probe<'a>(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<Self> {
-        let span = trace_span!("probe_emv");
+        let span = trace_span!("EMV");
         let _enter = span.enter();
 
         let mut slf = Self::default();

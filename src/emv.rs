@@ -7,7 +7,7 @@
 
 use crate::{ber, iso7816, Result};
 use pcsc::Card;
-use tracing::warn;
+use tracing::{trace_span, warn};
 
 pub const DIRECTORY_DF_NAME: &str = "1PAY.SYS.DDF01";
 
@@ -32,6 +32,9 @@ impl<'a> TryFrom<&'a [u8]> for Directory {
     type Error = crate::Error;
 
     fn try_from(data: &'a [u8]) -> Result<Self> {
+        let span = trace_span!("Directory");
+        let _enter = span.enter();
+
         let mut slf = Self::default();
         for res in ber::iter(data) {
             let (tag, value) = res?;

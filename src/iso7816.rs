@@ -1,7 +1,7 @@
 use crate::{ber, util, Result};
 use apdu::Command;
 use pcsc::Card;
-use tracing::warn;
+use tracing::{trace_span, warn};
 
 pub fn select_name<'r, R: TryFrom<&'r [u8]>>(
     card: &mut Card,
@@ -100,6 +100,9 @@ impl<'a> TryFrom<&'a [u8]> for SelectResponse<'a> {
     type Error = crate::Error;
 
     fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
+        let span = trace_span!("SelectResponse");
+        let _enter = span.enter();
+
         let (_, (tag, value)) = ber::parse_next(data)?;
         util::expect_tag(&[0x6F], tag)?;
 
@@ -126,6 +129,9 @@ impl<'a> TryFrom<&'a [u8]> for FileControlInfo<'a> {
     type Error = crate::Error;
 
     fn try_from(data: &'a [u8]) -> Result<Self> {
+        let span = trace_span!("FileControlInfo");
+        let _enter = span.enter();
+
         let mut slf = Self::default();
         for res in ber::iter(data) {
             let (tag, value) = res?;
