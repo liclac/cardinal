@@ -21,12 +21,14 @@ where
 }
 
 /// ID for a SELECT command.
+#[derive(Debug, PartialEq, Eq)]
 pub enum SelectID<'a> {
     /// Select by DF name.
     Name(&'a str),
 }
 
 /// Mode for a SELECT command.
+#[derive(Debug, PartialEq, Eq)]
 pub enum SelectMode {
     /// Select the first or only instance.
     First,
@@ -34,6 +36,7 @@ pub enum SelectMode {
     Next,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Select<'a> {
     pub id: SelectID<'a>,
     pub mode: SelectMode,
@@ -80,7 +83,7 @@ impl<'a> From<Select<'a>> for Command<'a> {
 }
 
 /// Response type for a SELECT command.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct SelectResponse<'a> {
     /// 0x6F File Control Information. Describes the selected file.
     pub fci: FileControlInfo<'a>,
@@ -112,7 +115,7 @@ impl<'a> TryFrom<&'a [u8]> for SelectResponse<'a> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct FileControlInfo<'a> {
     /// 0x84 DF Name. (Required)
     pub df_name: &'a [u8],
