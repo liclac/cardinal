@@ -1,3 +1,4 @@
+pub mod ber;
 pub mod emv;
 pub mod iso7816;
 pub mod probe;

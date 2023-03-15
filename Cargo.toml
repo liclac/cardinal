@@ -10,6 +10,10 @@ tracing = "0.1"
 thiserror = "1.0"
 pcsc = "2"
 apdu = "0.4"
+nom = "7"
+byteorder = "1"
+
+# TODO: Remove.
 bsn1 = "1.0"
 
 # CLI
