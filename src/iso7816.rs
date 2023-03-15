@@ -1,8 +1,24 @@
-use crate::{util, Result};
+use crate::{ber, util, Result};
 use apdu::Command;
-use bsn1::BerRef;
 use pcsc::Card;
 use tracing::warn;
+
+pub fn select_name<'r, R: TryFrom<&'r [u8]>>(
+    card: &mut Card,
+    wbuf: &mut [u8],
+    rbuf: &'r mut [u8],
+    name: &str,
+) -> Result<R, R::Error>
+where
+    R::Error: From<crate::Error>,
+{
+    Select {
+        id: SelectID::Name(name),
+        mode: SelectMode::First,
+    }
+    .call(card, wbuf, rbuf)?
+    .parse_into()
+}
 
 /// ID for a SELECT command.
 pub enum SelectID<'a> {
@@ -31,6 +47,15 @@ impl<'a> Select<'a> {
         rbuf: &'r mut [u8],
     ) -> Result<&'r [u8]> {
         util::call_apdu(card, wbuf, rbuf, self.into())
+    }
+
+    pub fn call<'r>(
+        self,
+        card: &mut Card,
+        wbuf: &mut [u8],
+        rbuf: &'r mut [u8],
+    ) -> Result<SelectResponse<'r>> {
+        self.exec(card, wbuf, rbuf)?.try_into()
     }
 }
 
@@ -62,12 +87,24 @@ pub struct SelectResponse<'a> {
 }
 
 impl<'a> SelectResponse<'a> {
-    pub fn parse(data: &'a [u8]) -> Result<Self> {
-        let wrapper = BerRef::try_from_bytes(data)?;
-        util::expect_tag(&[0x6F], wrapper.id().as_bytes())?;
+    /// Parses a SELECT response's FCI Proprietary Template data into a domain-specific type.
+    pub fn parse_into<R: TryFrom<&'a [u8]>>(&self) -> Result<R, R::Error>
+    where
+        R::Error: From<crate::Error>,
+    {
+        R::try_from(self.fci.pt.unwrap_or_default().into())
+    }
+}
+
+impl<'a> TryFrom<&'a [u8]> for SelectResponse<'a> {
+    type Error = crate::Error;
+
+    fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
+        let (_, (tag, value)) = ber::parse_next(data)?;
+        util::expect_tag(&[0x6F], tag)?;
 
         Ok(Self {
-            fci: FileControlInfo::parse(wrapper.contents().as_bytes())?,
+            fci: value.try_into()?,
         })
     }
 }
@@ -85,19 +122,21 @@ pub struct FileControlInfo<'a> {
     pub pt: Option<&'a [u8]>,
 }
 
-impl<'a> FileControlInfo<'a> {
-    pub fn parse(data: &'a [u8]) -> Result<Self> {
+impl<'a> TryFrom<&'a [u8]> for FileControlInfo<'a> {
+    type Error = crate::Error;
+
+    fn try_from(data: &'a [u8]) -> Result<Self> {
         let mut slf = Self::default();
         let mut data = data;
         loop {
-            let field = BerRef::try_from_bytes(data)?;
-            match field.id().as_bytes() {
-                &[0x84] => slf.df_name = field.contents().as_bytes(),
-                &[0xA5] => slf.pt = Some(field.contents().as_bytes()),
-                id @ _ => warn!("FileControlInfo contains unknown field: {:X?}", id),
+            let (rest, (tag, value)) = ber::parse_next(data)?;
+            match tag {
+                &[0x84] => slf.df_name = value,
+                &[0xA5] => slf.pt = Some(value),
+                _ => warn!("FileControlInfo contains unknown field: {:X?}", tag),
             }
 
-            data = &data[field.as_bytes().len()..];
+            data = rest;
             if data.len() == 0 {
                 break;
             }
@@ -112,15 +151,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_selectresponse_parse_emv_dir() {
-        let rsp = SelectResponse::parse(
-            &[
-                0x6F, 0x1E, 0x84, 0x0E, 0x31, 0x50, 0x41, 0x59, 0x2E, 0x53, 0x59, 0x53, 0x2E, 0x44,
-                0x44, 0x46, 0x30, 0x31, 0xA5, 0x0C, 0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E,
-                0x9F, 0x11, 0x01, 0x01,
-            ][..],
-        )
-        .expect("couldn't parse SelectResponse");
+    fn test_select_response_parse_emv_dir() {
+        let rsp: SelectResponse = [
+            0x6F, 0x1E, 0x84, 0x0E, 0x31, 0x50, 0x41, 0x59, 0x2E, 0x53, 0x59, 0x53, 0x2E, 0x44,
+            0x44, 0x46, 0x30, 0x31, 0xA5, 0x0C, 0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E,
+            0x9F, 0x11, 0x01, 0x01,
+        ][..]
+            .try_into()
+            .expect("couldn't parse SelectResponse");
         assert_eq!(rsp.fci.df_name, "1PAY.SYS.DDF01".as_bytes());
         assert_eq!(
             rsp.fci.pt,

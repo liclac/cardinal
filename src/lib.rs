@@ -16,8 +16,38 @@ pub enum Error {
     WrongTag { expected: Vec<u8>, actual: Vec<u8> },
 
     #[error(transparent)]
-    BSN1(#[from] bsn1::Error),
+    Nom(#[from] nom::error::Error<HexVec>),
 
     #[error(transparent)]
     PCSC(#[from] pcsc::Error),
+}
+
+impl From<nom::error::Error<&[u8]>> for Error {
+    fn from(value: nom::error::Error<&[u8]>) -> Self {
+        Self::Nom(nom::error::Error::new(
+            HexVec(value.input.into()),
+            value.code,
+        ))
+    }
+}
+
+impl From<nom::Err<nom::error::Error<&[u8]>>> for Error {
+    fn from(value: nom::Err<nom::error::Error<&[u8]>>) -> Self {
+        match value {
+            nom::Err::Error(err) => err.into(),
+            nom::Err::Failure(err) => err.into(),
+            nom::Err::Incomplete(_) => {
+                panic!("can't convert nom::Err::Incomplete into cardinal::Error")
+            }
+        }
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct HexVec(pub Vec<u8>);
+
+impl std::fmt::Display for HexVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:02X?}", self.0)
+    }
 }

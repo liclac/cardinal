@@ -2,7 +2,7 @@ use pcsc::Card;
 use tracing::{debug, trace_span, warn};
 
 use crate::util::call_le;
-use crate::{iso7816, Result};
+use crate::{emv, iso7816, Result};
 
 #[derive(Debug)]
 pub struct Probe {
@@ -37,7 +37,7 @@ pub fn probe(card: &mut Card) -> Result<Probe> {
         cid: probe_cid(card, &mut wbuf, &mut rbuf),
         atr: probe_atr(card),
         reader: probe_reader_attrs(card, &mut rbuf),
-        emv: probe_emv(card, &mut wbuf, &mut rbuf),
+        emv: EMV::probe(card, &mut wbuf, &mut rbuf),
     })
 }
 
@@ -103,28 +103,29 @@ fn probe_reader_attrs(card: &mut Card, rbuf: &mut [u8]) -> ReaderAttrs {
     }
 }
 
-#[derive(Debug)]
-pub struct EMV {}
+#[derive(Debug, Default)]
+pub struct EMV {
+    pub directory: Option<emv::DirectoryOwned>,
+}
 
-fn probe_emv(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<EMV> {
-    let span = trace_span!("probe_emv");
-    let _enter = span.enter();
+impl EMV {
+    fn probe<'a>(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<Self> {
+        let span = trace_span!("probe_emv");
+        let _enter = span.enter();
 
-    match (iso7816::Select {
-        id: iso7816::SelectID::Name("1PAY.SYS.DDF01"),
-        mode: iso7816::SelectMode::First,
-    })
-    .exec(card, wbuf, rbuf)
-    {
-        Ok(data) => {
-            let blob = iso7816::SelectResponse::parse(data).unwrap();
-            println!("{:#04X?}", blob);
+        let mut slf = Self::default();
+        match emv::Directory::select(card, wbuf, rbuf) {
+            Ok(dir) => {
+                debug!("Got an EMV Directory!");
+                slf.directory = Some(dir.into());
+            }
+            Err(err) => warn!("Couldn't select EMV payment directory: {}", err),
         }
-        Err(err) => warn!(
-            name = "1PAY.SYS.DDF01",
-            "couln't select EMV payment directory: {}", err
-        ),
-    }
 
-    None
+        if slf.directory.is_some() {
+            Some(slf)
+        } else {
+            None
+        }
+    }
 }
