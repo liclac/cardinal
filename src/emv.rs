@@ -17,9 +17,13 @@ pub struct Directory {
     /// 0x88: SFI of the Directory Elementary File. (Values 1-30.)
     pub ef_sfi: u8,
 
-    /// 0x5F2D: Language Preference. (an2, 2-8 bytes)
+    /// 0x5F2D: Language Preference. (an2, 2-8)
     /// List of 2-character language codes, eg. "enfr" (English, French).
     pub lang_prefs: Option<String>,
+
+    /// 0x9F11: Issuer Code Table Index. (n2, 1)
+    /// ISO/IEC 8859 code table for displaying the Application Preferred Name.
+    pub issuer_code_table_idx: Option<u8>,
 }
 
 impl<'a> Directory {
@@ -39,13 +43,9 @@ impl<'a> TryFrom<&'a [u8]> for Directory {
         for res in ber::iter(data) {
             let (tag, value) = res?;
             match tag {
-                &[0x88] => {
-                    slf.ef_sfi = *value.first().unwrap_or_else(|| {
-                        warn!("0x88 ef_sfi is empty!");
-                        &0
-                    })
-                }
+                &[0x88] => slf.ef_sfi = *value.first().unwrap_or(&0),
                 &[0x5F, 0x2D] => slf.lang_prefs = Some(String::from_utf8_lossy(value).into()),
+                &[0x9F, 0x11] => slf.issuer_code_table_idx = Some(*value.first().unwrap_or(&0)),
                 _ => warn!("EMV Directory contains unknown field: {:X?}", tag),
             }
         }
