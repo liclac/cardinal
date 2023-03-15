@@ -2,7 +2,7 @@ use pcsc::Card;
 use tracing::{debug, trace_span, warn};
 
 use crate::util::call_le;
-use crate::{emv, iso7816, Result};
+use crate::{emv, Result};
 
 #[derive(Debug)]
 pub struct Probe {
@@ -105,7 +105,7 @@ fn probe_reader_attrs(card: &mut Card, rbuf: &mut [u8]) -> ReaderAttrs {
 
 #[derive(Debug, Default)]
 pub struct EMV {
-    pub directory: Option<emv::DirectoryOwned>,
+    pub directory: Option<emv::Directory>,
 }
 
 impl EMV {
@@ -117,7 +117,7 @@ impl EMV {
         match emv::Directory::select(card, wbuf, rbuf) {
             Ok(dir) => {
                 debug!("Got an EMV Directory!");
-                slf.directory = Some(dir.into());
+                slf.directory = Some(dir);
             }
             Err(err) => warn!("Couldn't select EMV payment directory: {}", err),
         }
