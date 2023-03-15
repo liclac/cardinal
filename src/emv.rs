@@ -17,7 +17,7 @@ pub struct Directory {
     /// 0x88: SFI of the Directory Elementary File. (Values 1-30.)
     pub ef_sfi: u8,
 
-    /// 0x5F2D: Language Preference.
+    /// 0x5F2D: Language Preference. (an2, 2-8 bytes)
     /// List of 2-character language codes, eg. "enfr" (English, French).
     pub lang_prefs: Option<String>,
 }
@@ -33,9 +33,8 @@ impl<'a> TryFrom<&'a [u8]> for Directory {
 
     fn try_from(data: &'a [u8]) -> Result<Self> {
         let mut slf = Self::default();
-        let mut data = data;
-        loop {
-            let (rest, (tag, value)) = ber::parse_next(data)?;
+        for res in ber::iter(data) {
+            let (tag, value) = res?;
             match tag {
                 &[0x88] => {
                     slf.ef_sfi = *value.first().unwrap_or_else(|| {
@@ -45,11 +44,6 @@ impl<'a> TryFrom<&'a [u8]> for Directory {
                 }
                 &[0x5F, 0x2D] => slf.lang_prefs = Some(String::from_utf8_lossy(value).into()),
                 _ => warn!("EMV Directory contains unknown field: {:X?}", tag),
-            }
-
-            data = rest;
-            if data.len() == 0 {
-                break;
             }
         }
 

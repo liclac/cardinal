@@ -127,18 +127,12 @@ impl<'a> TryFrom<&'a [u8]> for FileControlInfo<'a> {
 
     fn try_from(data: &'a [u8]) -> Result<Self> {
         let mut slf = Self::default();
-        let mut data = data;
-        loop {
-            let (rest, (tag, value)) = ber::parse_next(data)?;
+        for res in ber::iter(data) {
+            let (tag, value) = res?;
             match tag {
                 &[0x84] => slf.df_name = value,
                 &[0xA5] => slf.pt = Some(value),
                 _ => warn!("FileControlInfo contains unknown field: {:X?}", tag),
-            }
-
-            data = rest;
-            if data.len() == 0 {
-                break;
             }
         }
 

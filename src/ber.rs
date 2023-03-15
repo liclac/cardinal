@@ -88,6 +88,32 @@ pub fn parse_next(data: &[u8]) -> IResult<(&[u8], &[u8])> {
     Ok((data, (tag, val)))
 }
 
+pub fn iter<'a>(data: &'a [u8]) -> Iter<'a> {
+    Iter { data }
+}
+
+pub struct Iter<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = crate::Result<(&'a [u8], &'a [u8])>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match parse_next(self.data) {
+            Ok((rest, (tag, value))) => {
+                self.data = rest;
+                Some(Ok((tag, value)))
+            }
+            Err(nom::Err::Error(nom::error::Error {
+                input: _,
+                code: nom::error::ErrorKind::Eof,
+            })) => None,
+            Err(err) => Some(Err(err.into())),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,5 +429,70 @@ mod tests {
         assert_eq!(is_constructed(tag), false);
         assert_eq!(val, &[0x01]);
         assert_eq!(rest, &[]);
+    }
+
+    #[test]
+    fn test_iter_tlv_emv_dir() {
+        // Response to `SELECT '1PAY.SYS.DDF01'` to a (Nitecrest) Monzo card.
+        let mut it = iter(&[
+            0x6F, 0x1E, 0x84, 0x0E, 0x31, 0x50, 0x41, 0x59, 0x2E, 0x53, 0x59, 0x53, 0x2E, 0x44,
+            0x44, 0x46, 0x30, 0x31, 0xA5, 0x0C, 0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E,
+            0x9F, 0x11, 0x01, 0x01,
+        ]);
+        let (tag, val) = it
+            .next()
+            .expect("iterator came up empty")
+            .expect("iterator error");
+        assert_eq!(tag, &[0x6F]);
+        assert_eq!(is_constructed(tag), true);
+        assert_eq!(
+            val,
+            &[
+                0x84, 0x0E, 0x31, 0x50, 0x41, 0x59, 0x2E, 0x53, 0x59, 0x53, 0x2E, 0x44, 0x44, 0x46,
+                0x30, 0x31, 0xA5, 0x0C, 0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E, 0x9F, 0x11,
+                0x01, 0x01
+            ]
+        );
+
+        assert_eq!(it.next().is_none(), true);
+        assert_eq!(it.next().is_none(), true);
+
+        // Parse 0x6F - the FCI Template.
+        let mut it = iter(val);
+        let (tag, val) = it.next().expect("0x6F[0] empty").expect("0x6F[0] error");
+        assert_eq!(tag, &[0x84]);
+        assert_eq!(is_constructed(tag), false);
+        assert_eq!(val, "1PAY.SYS.DDF01".as_bytes());
+
+        let (tag, val) = it.next().expect("0x6F[1] empty").expect("0x6F[1] error");
+        assert_eq!(tag, &[0xA5]);
+        assert_eq!(is_constructed(tag), true);
+        assert_eq!(
+            val,
+            &[0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E, 0x9F, 0x11, 0x01, 0x01]
+        );
+
+        assert_eq!(it.next().is_none(), true);
+        assert_eq!(it.next().is_none(), true);
+
+        // Parse 0xA5 - the FCI Proprietary Template.
+        let mut it = iter(val);
+        let (tag, val) = it.next().expect("0xA5[0] empty").expect("0xA5[0] error");
+        assert_eq!(tag, &[0x88]);
+        assert_eq!(is_constructed(tag), false);
+        assert_eq!(val, &[0x01]);
+
+        let (tag, val) = it.next().expect("0xA5[1] empty").expect("0xA5[1] error");
+        assert_eq!(tag, &[0x5F, 0x2D]);
+        assert_eq!(is_constructed(tag), false);
+        assert_eq!(val, "en".as_bytes());
+
+        let (tag, val) = it.next().expect("0xA5[2] empty").expect("0xA5[2] error");
+        assert_eq!(tag, &[0x9F, 0x11]);
+        assert_eq!(is_constructed(tag), false);
+        assert_eq!(val, &[0x01]);
+
+        assert_eq!(it.next().is_none(), true);
+        assert_eq!(it.next().is_none(), true);
     }
 }
