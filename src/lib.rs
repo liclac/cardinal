@@ -1,3 +1,4 @@
+pub mod atr;
 pub mod ber;
 pub mod emv;
 pub mod iso7816;

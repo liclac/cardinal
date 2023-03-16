@@ -12,6 +12,7 @@ pcsc = "2"
 apdu = "0.4"
 nom = "7"
 byteorder = "1"
+num_enum = "0.5"
 
 # CLI
 clap = { version = "4", features = [ "derive" ] }

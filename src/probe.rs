@@ -2,7 +2,7 @@ use pcsc::Card;
 use tracing::{debug, trace_span, warn};
 
 use crate::util::call_le;
-use crate::{emv, Result};
+use crate::{atr, emv, Result};
 
 #[derive(Debug)]
 pub struct Probe {
@@ -11,7 +11,7 @@ pub struct Probe {
     pub cid: Option<Vec<u8>>,
 
     /// Answer-to-Reset (or Answer-to-Select for contactless) blob.
-    pub atr: Option<Vec<u8>>,
+    pub atr: Option<atr::ATR>,
 
     /// Reader attributes (from PCSC).
     pub reader: ReaderAttrs,
@@ -35,7 +35,7 @@ pub fn probe(card: &mut Card) -> Result<Probe> {
     let mut rbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Response buffer.
     Ok(Probe {
         cid: probe_cid(card, &mut wbuf, &mut rbuf),
-        atr: probe_atr(card),
+        atr: probe_atr(card, &mut rbuf),
         reader: probe_reader_attrs(card, &mut rbuf),
         emv: EMV::probe(card, &mut wbuf, &mut rbuf),
     })
@@ -59,16 +59,23 @@ fn probe_cid(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<Vec<u8
     cid
 }
 
-fn probe_atr(card: &mut Card) -> Option<Vec<u8>> {
+fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Option<atr::ATR> {
     let span = trace_span!("probe_atr");
     let _enter = span.enter();
 
-    card.get_attribute_owned(pcsc::Attribute::AtrString)
-        .map_err(|err| {
+    match card.get_attribute(pcsc::Attribute::AtrString, rbuf) {
+        Ok(attr) => match atr::parse(attr) {
+            Ok(atr) => Some(atr),
+            Err(err) => {
+                warn!("couldn't parse ATR: {}", err);
+                None
+            }
+        },
+        Err(err) => {
             warn!("couldn't query ATR: {}", err);
-            err
-        })
-        .ok()
+            None
+        }
+    }
 }
 
 fn probe_reader_attrs(card: &mut Card, rbuf: &mut [u8]) -> ReaderAttrs {
