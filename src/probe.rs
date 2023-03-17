@@ -64,13 +64,16 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Option<atr::ATR> {
     let _enter = span.enter();
 
     match card.get_attribute(pcsc::Attribute::AtrString, rbuf) {
-        Ok(attr) => match atr::parse(attr) {
-            Ok(atr) => Some(atr),
-            Err(err) => {
-                warn!("couldn't parse ATR: {}", err);
-                None
+        Ok(attr) => {
+            debug!("ATR: {:02X?}", attr);
+            match atr::parse(attr) {
+                Ok(atr) => Some(atr),
+                Err(err) => {
+                    warn!("couldn't parse ATR: {}", err);
+                    None
+                }
             }
-        },
+        }
         Err(err) => {
             warn!("couldn't query ATR: {}", err);
             None

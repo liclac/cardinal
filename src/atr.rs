@@ -9,8 +9,10 @@
 
 use nom::bytes::complete::take;
 use nom::combinator::{cond, map};
+use nom::multi::fold_many0;
 use nom::number::complete::be_u8;
 use num_enum::{FromPrimitive, IntoPrimitive};
+use tracing::{trace_span, warn};
 
 pub type IResult<'a, T> = nom::IResult<&'a [u8], T>;
 
@@ -104,6 +106,93 @@ fn parse_txn<Ta: From<u8>, Tb: From<u8>, Tc: From<u8>>(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HistoricalBytes {
+    Status(HistoricalBytesStatus),
+    TLV(HistoricalBytesTLV),
+    Unknown(u8, Vec<u8>),
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct HistoricalBytesTLV {
+    pub raw: Vec<u8>,
+    pub service_data: Option<u8>,
+    pub pre_issuing_data: Option<Vec<u8>>,
+    pub status: Option<HistoricalBytesStatus>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct HistoricalBytesStatus {
+    pub status: Option<u8>,
+    pub sw1sw2: Option<u16>,
+}
+
+fn parse_historical_bytes_status(data: &[u8]) -> Option<HistoricalBytesStatus> {
+    match data.len() {
+        1 => Some(HistoricalBytesStatus {
+            status: Some(data[0]),
+            sw1sw2: None,
+        }),
+        2 => Some(HistoricalBytesStatus {
+            status: None,
+            sw1sw2: Some(u16::from_be_bytes([data[0], data[1]])),
+        }),
+        3 => Some(HistoricalBytesStatus {
+            status: Some(data[0]),
+            sw1sw2: Some(u16::from_be_bytes([data[1], data[2]])),
+        }),
+        _ => {
+            warn!("invalid status: {:02X?}", data);
+            None
+        }
+    }
+}
+
+fn parse_historical_bytes<'a>(data: &'a [u8]) -> IResult<HistoricalBytes> {
+    let span = trace_span!("HistoricalBytes");
+    let _enter = span.enter();
+
+    match be_u8(data)? {
+        (data, tag @ 0x10) => Ok((
+            &data[data.len()..],
+            if let Some(status) = parse_historical_bytes_status(data) {
+                HistoricalBytes::Status(status)
+            } else {
+                HistoricalBytes::Unknown(tag, data.to_owned())
+            },
+        )),
+        (data, 0x80) => Ok(fold_many0(
+            |data: &'a [u8]| {
+                // This isn't BER, this is COMPACT-TLV. High nibble is a tag, low is a length.
+                // Thankfully, this makes the parser nice and compact, too.
+                let (data, (tag, length)) =
+                    map(be_u8, |tl| (tl & 0b1111_0000, tl & 0b0000_1111))(data)?;
+                let (data, value) = take(length)(data)?;
+                Ok((data, (tag, value)))
+            },
+            || {
+                let mut tlv = HistoricalBytesTLV::default();
+                tlv.raw = data.to_owned();
+                tlv
+            },
+            |mut tlv, (tag, data)| {
+                match tag {
+                    0x30 => tlv.service_data = data.first().copied(),
+                    0x60 => tlv.pre_issuing_data = Some(data.to_owned()),
+                    0x80 => tlv.status = parse_historical_bytes_status(data),
+                    _ => warn!("unknown tag: {:02X} => {:02X?}", tag, data),
+                }
+                tlv
+            },
+        )(data)
+        .map(|(data, tlv)| (data, HistoricalBytes::TLV(tlv)))?),
+        (data, cat) => Ok((
+            &data[data.len()..],
+            HistoricalBytes::Unknown(cat, data.to_owned()),
+        )),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ATR {
     /// Electrical transmission convention (hi=1 or lo=1).
     pub ts: TS,
@@ -121,8 +210,8 @@ pub struct ATR {
     /// TD3: Protocol support. No further TXn fields should be present.
     pub tx3: TXn<u8, u8, u8>,
 
-    /// Historical bytes. A Compact TLV value. (TODO: Parse this.)
-    pub historical_bytes: Vec<u8>,
+    /// Historical bytes.
+    pub historical_bytes: HistoricalBytes,
 
     /// Checksum byte. (We trust the reader to validate this.)
     pub tck: u8,
@@ -137,8 +226,8 @@ pub fn parse(data: &[u8]) -> crate::Result<ATR> {
     // TX4 is not a real thing as of writing and should not be here.
     assert!(tx3.td.map(|v| v.txn).unwrap_or_default() == 0x00);
 
-    let (data, historical_bytes): (_, Vec<u8>) =
-        take(t0.k)(data).map(|(i, v)| (i, v.to_owned()))?;
+    let (data, historical_bytes) =
+        take(t0.k)(data).and_then(|(i, v)| parse_historical_bytes(v).map(|(_, v)| (i, v)))?;
     let (_, tck) = be_u8(data)?;
 
     Ok(ATR {
@@ -191,10 +280,18 @@ mod tests {
                     }),
                 },
                 tx3: TXn::default(),
-                historical_bytes: vec![
-                    0x80, 0x31, 0x80, 0x66, 0xB1, 0x84, 0x0C, 0x01, 0x6E, 0x01, 0x83, 0x00, 0x90,
-                    0x00
-                ],
+                historical_bytes: HistoricalBytes::TLV(HistoricalBytesTLV {
+                    raw: vec![
+                        0x31, 0x80, 0x66, 0xB1, 0x84, 0x0C, 0x01, 0x6E, 0x01, 0x83, 0x00, 0x90,
+                        0x00
+                    ],
+                    service_data: Some(0x80),
+                    pre_issuing_data: Some(vec![0xB1, 0x84, 0x0C, 0x01, 0x6E, 0x01]),
+                    status: Some(HistoricalBytesStatus {
+                        status: Some(0x00),
+                        sw1sw2: Some(0x9000)
+                    }),
+                }),
                 tck: 0x1C,
             }
         );
