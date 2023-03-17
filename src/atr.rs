@@ -9,8 +9,7 @@
 
 use nom::bytes::complete::take;
 use nom::combinator::{cond, map};
-use nom::multi::fold_many0;
-use nom::number::complete::be_u8;
+use nom::number::complete::{be_u16, be_u32, be_u8};
 use num_enum::{FromPrimitive, IntoPrimitive};
 use tracing::{trace_span, warn};
 
@@ -116,6 +115,7 @@ pub enum HistoricalBytes {
 pub struct HistoricalBytesTLV {
     pub raw: Vec<u8>,
     pub service_data: Option<u8>,
+    pub initial_access: Option<InitialAccess>,
     pub pre_issuing_data: Option<Vec<u8>>,
     pub status: Option<HistoricalBytesStatus>,
 }
@@ -147,6 +147,77 @@ fn parse_historical_bytes_status(data: &[u8]) -> Option<HistoricalBytesStatus> {
     }
 }
 
+/// 0x4Y "Initial access bytes" inside the Historical Bytes.
+///
+/// I'm genuinely unsure about the proper spec for this - I think it's in PC/SC, but the
+/// PC/SC specifications are incomprehensible cryptids and I can never even tell if I'm
+/// reading the right document. This is just based on the docs for my ACR 1252-U reader.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitialAccess {
+    /// Registered Application Provider Identifier (RID), eg. A0 00 00 03 06.
+    pub rid: Provider,
+    /// Standard in use.
+    pub standard: Standard,
+    /// Card name.
+    pub card_name: CardName,
+    /// Unused, reserved for future use.
+    pub rfu: u32,
+}
+
+fn parse_initial_access(data: &[u8]) -> IResult<InitialAccess> {
+    let (data, rid) = map(take(5usize), |v: &[u8]| match v {
+        &[0xA0, 0x00, 0x00, 0x03, 0x06] => Provider::PCSCWorkgroup,
+        _ => Provider::Unknown(v.to_owned()),
+    })(data)?;
+    let (data, standard) = map(be_u8, |v| v.into())(data)?;
+    let (data, card_name) = map(be_u16, |v| v.into())(data)?;
+    let (data, rfu) = be_u32(data)?;
+    Ok((
+        data,
+        InitialAccess {
+            rid,
+            standard,
+            card_name,
+            rfu,
+        },
+    ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Provider {
+    PCSCWorkgroup,
+    Unknown(Vec<u8>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+#[repr(u8)]
+pub enum Standard {
+    Iso14443a3 = 0x03,
+    FeliCa = 0x11,
+    #[num_enum(catch_all)]
+    Unknown(u8),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+#[repr(u16)]
+pub enum CardName {
+    MifareClassic1K = 0x0001,
+    MifareClassic4K = 0x0002,
+    MifareUltralight = 0x0003,
+    MifareMini = 0x0026,
+    MifareUltralightC = 0x003A,
+    MifarePlusSL12K = 0x0036,
+    MifarePlusSL14K = 0x0037,
+    MifarePlusSL22K = 0x0038,
+    MifarePlusSL24K = 0x0039,
+    TopazJewel = 0x0030,
+    FeliCa = 0x003B,
+    JCOP30 = 0xFF28,
+    SRIX = 0x0007,
+    #[num_enum(catch_all)]
+    Unknown(u16),
+}
+
 fn parse_historical_bytes<'a>(data: &'a [u8]) -> IResult<HistoricalBytes> {
     let span = trace_span!("HistoricalBytes");
     let _enter = span.enter();
@@ -160,31 +231,45 @@ fn parse_historical_bytes<'a>(data: &'a [u8]) -> IResult<HistoricalBytes> {
                 HistoricalBytes::Unknown(tag, data.to_owned())
             },
         )),
-        (data, 0x80) => Ok(fold_many0(
-            |data: &'a [u8]| {
+        (data, 0x80) => Ok({
+            let mut tlv = HistoricalBytesTLV::default();
+            tlv.raw = data.to_owned();
+
+            let mut rest = data;
+            while rest.len() > 0 {
                 // This isn't BER, this is COMPACT-TLV. High nibble is a tag, low is a length.
                 // Thankfully, this makes the parser nice and compact, too.
                 let (data, (tag, length)) =
-                    map(be_u8, |tl| (tl & 0b1111_0000, tl & 0b0000_1111))(data)?;
+                    map(be_u8, |tl| (tl & 0b1111_0000, tl & 0b0000_1111))(rest)?;
+
+                // ...except when the length is F and the next byte is the real length?
+                // (I can only find this mentioned in the docs for my ACR 1252-U reader.)
+                let (data, length) = if length != 0xF {
+                    (data, length)
+                } else {
+                    be_u8(data)?
+                };
+
                 let (data, value) = take(length)(data)?;
-                Ok((data, (tag, value)))
-            },
-            || {
-                let mut tlv = HistoricalBytesTLV::default();
-                tlv.raw = data.to_owned();
-                tlv
-            },
-            |mut tlv, (tag, data)| {
                 match tag {
-                    0x30 => tlv.service_data = data.first().copied(),
-                    0x60 => tlv.pre_issuing_data = Some(data.to_owned()),
-                    0x80 => tlv.status = parse_historical_bytes_status(data),
-                    _ => warn!("unknown tag: {:02X} => {:02X?}", tag, data),
+                    0x30 => tlv.service_data = value.first().copied(),
+                    0x40 => {
+                        tlv.initial_access = parse_initial_access(value)
+                            .map_err(|err| {
+                                warn!("couldn't parse initial access bytes");
+                                err
+                            })
+                            .map(|(_, v)| v)
+                            .ok()
+                    }
+                    0x60 => tlv.pre_issuing_data = Some(value.to_owned()),
+                    0x80 => tlv.status = parse_historical_bytes_status(value),
+                    _ => warn!("unknown tag: {:02X} => {:02X?}", tag, value),
                 }
-                tlv
-            },
-        )(data)
-        .map(|(data, tlv)| (data, HistoricalBytes::TLV(tlv)))?),
+                rest = data;
+            }
+            (data, HistoricalBytes::TLV(tlv))
+        }),
         (data, cat) => Ok((
             &data[data.len()..],
             HistoricalBytes::Unknown(cat, data.to_owned()),
@@ -286,6 +371,7 @@ mod tests {
                         0x00
                     ],
                     service_data: Some(0x80),
+                    initial_access: None,
                     pre_issuing_data: Some(vec![0xB1, 0x84, 0x0C, 0x01, 0x6E, 0x01]),
                     status: Some(HistoricalBytesStatus {
                         status: Some(0x00),
@@ -293,6 +379,58 @@ mod tests {
                     }),
                 }),
                 tck: 0x1C,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_pasmo() {
+        // ATR from a 2019 PASMO (FeliCa) card.
+        let atr = parse(&[
+            0x3B, 0x8F, 0x80, 0x01, 0x80, 0x4F, 0x0C, 0xA0, 0x00, 0x00, 0x03, 0x06, 0x11, 0x00,
+            0x3B, 0x00, 0x00, 0x00, 0x00, 0x42,
+        ])
+        .expect("couldn't parse ATR");
+        assert_eq!(
+            atr,
+            ATR {
+                ts: TS::Direct,
+                t0: T0 { tx1: 0b1000, k: 15 },
+                tx1: TXn {
+                    ta: None,
+                    tb: None,
+                    tc: None,
+                    td: Some(TDn {
+                        protocol: Protocol::T0,
+                        txn: 0b1000,
+                    }),
+                },
+                tx2: TXn {
+                    ta: None,
+                    tb: None,
+                    tc: None,
+                    td: Some(TDn {
+                        protocol: Protocol::T1,
+                        txn: 0b0000,
+                    }),
+                },
+                tx3: TXn::default(),
+                historical_bytes: HistoricalBytes::TLV(HistoricalBytesTLV {
+                    raw: vec![
+                        0x4F, 0x0C, 0xA0, 0x00, 0x00, 0x03, 0x06, 0x11, 0x00, 0x3B, 0x00, 0x00,
+                        0x00, 0x00
+                    ],
+                    initial_access: Some(InitialAccess {
+                        rid: Provider::PCSCWorkgroup,
+                        standard: Standard::FeliCa,
+                        card_name: CardName::FeliCa,
+                        rfu: 0x00000000,
+                    }),
+                    service_data: None,
+                    pre_issuing_data: None,
+                    status: None,
+                }),
+                tck: 0x42,
             }
         );
     }
