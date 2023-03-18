@@ -1,6 +1,7 @@
 pub mod atr;
 pub mod ber;
 pub mod emv;
+pub mod felica;
 pub mod iso7816;
 pub mod probe;
 mod util;
