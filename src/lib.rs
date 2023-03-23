@@ -17,6 +17,15 @@ pub enum Error {
     #[error("expected tag {expected:04X?}, got {actual:04X?}")]
     WrongTag { expected: Vec<u8>, actual: Vec<u8> },
 
+    #[error("[felica] command failed: flag1={0:02X} flag2={1:02X}")]
+    FelicaStatus(u8, u8),
+
+    #[error("[felica] expected a {expected:?} payload, got a {actual:?}")]
+    FelicaCommandCode {
+        expected: felica::CommandCode,
+        actual: felica::CommandCode,
+    },
+
     #[error(transparent)]
     Scroll(#[from] scroll::Error),
 

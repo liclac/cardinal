@@ -32,13 +32,13 @@
 //   Block Num.   [1] => n
 //   Block List   [N] (2-3 bytes each, repeated block_num times)
 //
-// So I asked it to read 1 service (0x09, 0x01), 1 block (0x80, 0x00).
+// So I asked it to read 1 service (0x0901), 1 block (0x80, 0x00).
 //
 // Response: 0C 07 01 01 0A 10 8E 1B AD 39 01 A6
-// Length = 0x0C (12), Type = 0x07 (Read w/o Encryption Response), then the IDm again.
-// Status = 0x01 0xA6, which... lol that's an error, Illegal Service Code List.
 
 use crate::{util, Result};
+use nom::bytes::complete::take;
+use nom::number::complete::{be_u64, le_u8};
 use num_enum::{FromPrimitive, IntoPrimitive};
 use pcsc::Card;
 use scroll::{Pread, Pwrite, BE, LE};
@@ -64,7 +64,8 @@ pub trait Command<'a> {
     /// Return an APDU wrapper.
     fn apdu<'w>(&self, wbuf: &'w mut [u8]) -> Result<apdu::Command<'w>> {
         let payload = self.write(wbuf)?;
-        debug_assert!(payload[0] as usize == payload.len());
+        debug_assert_eq!(payload[0] as usize, payload.len());
+        // Note: Although technically correct, setting an Le here will break the command.
         Ok(apdu::Command::new_with_payload(
             0xFF, 0x00, 0x00, 0x00, payload,
         ))
@@ -76,14 +77,18 @@ pub trait Command<'a> {
         let mut apdu_buf = [0u8; 256];
         let apdu = self.apdu(&mut apdu_buf[..])?;
 
-        let raw = util::call_apdu(card, wbuf, rbuf, apdu)?;
-        let (_, rsp) = Self::Response::parse(raw)?;
-        Ok(rsp)
+        Self::Response::parse(util::call_apdu(card, wbuf, rbuf, apdu)?)
     }
 }
 
 pub trait Response<'a>: Sized {
-    fn parse(rbuf: &'a [u8]) -> IResult<Self>;
+    const CODE: CommandCode;
+
+    fn iparse(data: &'a [u8]) -> IResult<Self>;
+
+    fn parse(data: &'a [u8]) -> Result<Self> {
+        Ok(Self::iparse(data).map(|(_, v)| v)?)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
@@ -134,7 +139,9 @@ pub struct ReadWithoutEncryptionResponse<'a> {
 }
 
 impl<'a> Response<'a> for ReadWithoutEncryptionResponse<'a> {
-    fn parse(rbuf: &'a [u8]) -> IResult<Self> {
+    const CODE: CommandCode = CommandCode::ReadWithoutEncryptionResponse;
+
+    fn iparse(rbuf: &'a [u8]) -> IResult<Self> {
         Ok((
             rbuf,
             Self {
@@ -153,7 +160,7 @@ pub struct RequestSystemCode {
 
 impl<'a> Command<'a> for RequestSystemCode {
     const CODE: CommandCode = CommandCode::RequestSystemCode;
-    type Response = RequestSystemCodeResponse<'a>;
+    type Response = RequestSystemCodeResponse;
 
     fn write<'w>(&self, wbuf: &'w mut [u8]) -> Result<&'w [u8]> {
         let mut offset = 1;
@@ -165,22 +172,27 @@ impl<'a> Command<'a> for RequestSystemCode {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct RequestSystemCodeResponse<'a> {
+pub struct RequestSystemCodeResponse {
     pub idm: u64,
-    pub num_sys_codes: u8,
-    pub raw_sys_codes: &'a [u8],
+    pub systems: Vec<u16>,
 }
 
-impl<'a> Response<'a> for RequestSystemCodeResponse<'a> {
-    fn parse(rbuf: &'a [u8]) -> IResult<Self> {
-        Ok((
-            rbuf,
-            Self {
-                idm: 0,
-                num_sys_codes: 0,
-                raw_sys_codes: &[],
-            },
-        ))
+impl<'a> Response<'a> for RequestSystemCodeResponse {
+    const CODE: CommandCode = CommandCode::RequestSystemCodeResponse;
+
+    fn iparse(data: &'a [u8]) -> IResult<Self> {
+        let (data, _) = le_u8(data)?; // Ignore length prefix.
+        let (data, code) = le_u8(data)?;
+        assert_eq!(Self::CODE, code.into());
+        let (data, idm) = be_u64(data)?;
+
+        let (data, num_systems) = le_u8(data)?;
+        let (data, systems_data) = take(num_systems * 2)(data)?;
+        let systems = systems_data
+            .chunks(2)
+            .map(|data| u16::from_le_bytes([data[0], data[1]]))
+            .collect();
+        Ok((data, Self { idm, systems }))
     }
 }
 
@@ -247,5 +259,20 @@ mod tests {
             apdu.payload.expect("no payload"),
             &[10, 0x0C, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
         );
+    }
+
+    #[test]
+    fn test_request_system_code_response() {
+        assert_eq!(
+            RequestSystemCodeResponse::parse(&[
+                0x0F, 0x0D, 0x01, 0x01, 0x0A, 0x10, 0x8E, 0x1B, 0xAD, 0x39, 0x02, 0x00, 0x03, 0xFE,
+                0x00,
+            ])
+            .unwrap(),
+            RequestSystemCodeResponse {
+                idm: 0x01010A108E1BAD39,
+                systems: vec![0x0300, 0x00FE],
+            },
+        )
     }
 }

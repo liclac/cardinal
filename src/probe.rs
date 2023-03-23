@@ -171,7 +171,9 @@ impl EMV {
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct FeliCa {}
+pub struct FeliCa {
+    pub systems: Vec<u16>,
+}
 
 impl FeliCa {
     fn probe<'a>(card: &mut Card, cid: &[u8], wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<Self> {
@@ -194,8 +196,9 @@ impl FeliCa {
 
         let idm = felica::cid_to_idm(cid)
             .expect("FeliCa card returned invalid IDm; this is a bug, please report me!");
-        let rsp = felica::RequestSystemCode { idm }.call(card, wbuf, rbuf);
-        println!("{:?}", rsp);
-        Ok(Self {})
+
+        let felica::RequestSystemCodeResponse { systems, .. } =
+            felica::RequestSystemCode { idm }.call(card, wbuf, rbuf)?;
+        Ok(Self { systems })
     }
 }
