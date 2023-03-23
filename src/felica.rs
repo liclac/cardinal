@@ -27,16 +27,225 @@
 // Structure:
 //   Command Code [1] = 0x06
 //   IDm          [8]
-//   Service Num. [1]
-//   Service List [m] (repeated service_num times)
-//   Block Num.   [1]
-//   Block List   [n] (repeated block_num times)
+//   Service Num. [1] => m
+//   Service List [2m] (u16, repeated service_num times)
+//   Block Num.   [1] => n
+//   Block List   [N] (2-3 bytes each, repeated block_num times)
 //
-// So I asked it to read Service 0x09, Block 0x01. 0x8000 is a checksum, Section 2.2:
-//   Checksum of data length and Packet Data, based on CRC-CCITT (Big Endian)
-//   Initial value: 0x0000, Generator polynomial: x^16 + x^12 + x^5 + 1
-// Oh gods that equation is making my head spin. I hope it's easier than it looks.
+// So I asked it to read 1 service (0x09, 0x01), 1 block (0x80, 0x00).
 //
 // Response: 0C 07 01 01 0A 10 8E 1B AD 39 01 A6
 // Length = 0x0C (12), Type = 0x07 (Read w/o Encryption Response), then the IDm again.
 // Status = 0x01 0xA6, which... lol that's an error, Illegal Service Code List.
+
+use crate::{util, Result};
+use num_enum::{FromPrimitive, IntoPrimitive};
+use pcsc::Card;
+use scroll::{Pread, Pwrite, BE, LE};
+
+pub type IResult<'a, T> = nom::IResult<&'a [u8], T>;
+
+/// Parses a CID retrieved from PCSC into an IDm.
+/// In other words, casts an 8-byte &[u8] into an u64.
+pub fn cid_to_idm(cid: &[u8]) -> Result<u64> {
+    Ok(cid.pread_with(0, BE)?)
+}
+
+pub trait Command<'a> {
+    /// Associated command code.
+    const CODE: CommandCode;
+
+    /// Associated response code.
+    type Response: Response<'a>;
+
+    /// Write the command (including length prefix!) to the buffer and return a slice of it.
+    fn write<'w>(&self, wbuf: &'w mut [u8]) -> Result<&'w [u8]>;
+
+    /// Return an APDU wrapper.
+    fn apdu<'w>(&self, wbuf: &'w mut [u8]) -> Result<apdu::Command<'w>> {
+        let payload = self.write(wbuf)?;
+        debug_assert!(payload[0] as usize == payload.len());
+        Ok(apdu::Command::new_with_payload(
+            0xFF, 0x00, 0x00, 0x00, payload,
+        ))
+    }
+
+    /// Executes the command against the given card and returns the response.
+    fn call(&self, card: &mut Card, wbuf: &mut [u8], rbuf: &'a mut [u8]) -> Result<Self::Response> {
+        // TODO: This is a bit of a pointless extra step.
+        let mut apdu_buf = [0u8; 256];
+        let apdu = self.apdu(&mut apdu_buf[..])?;
+
+        let raw = util::call_apdu(card, wbuf, rbuf, apdu)?;
+        let (_, rsp) = Self::Response::parse(raw)?;
+        Ok(rsp)
+    }
+}
+
+pub trait Response<'a>: Sized {
+    fn parse(rbuf: &'a [u8]) -> IResult<Self>;
+}
+
+#[derive(Debug, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+#[repr(u8)]
+pub enum CommandCode {
+    ReadWithoutEncryption = 0x06,
+    ReadWithoutEncryptionResponse = 0x07,
+    RequestSystemCode = 0x0C,
+    RequestSystemCodeResponse = 0x0D,
+    #[num_enum(catch_all)]
+    Unknown(u8),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReadWithoutEncryption {
+    pub idm: u64,
+    pub services: Vec<u16>,
+    // Blocklist encoding is an entire adventure I'm *not* getting into here.
+    pub blocks: Vec<u16>,
+}
+
+impl<'a> Command<'a> for ReadWithoutEncryption {
+    const CODE: CommandCode = CommandCode::ReadWithoutEncryption;
+    type Response = ReadWithoutEncryptionResponse<'a>;
+
+    fn write<'w>(&self, wbuf: &'w mut [u8]) -> Result<&'w [u8]> {
+        let mut offset = 1;
+        wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
+        wbuf.gwrite_with(self.idm, &mut offset, BE)?;
+        wbuf.gwrite::<u8>(self.services.len() as u8, &mut offset)?;
+        for sid in self.services.iter() {
+            wbuf.gwrite_with(sid, &mut offset, LE)?;
+        }
+        wbuf.gwrite::<u8>(self.blocks.len() as u8, &mut offset)?;
+        for bid in self.blocks.iter() {
+            wbuf.gwrite_with(bid, &mut offset, LE)?;
+        }
+        wbuf[0] = offset as u8;
+        Ok(&wbuf[..offset])
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReadWithoutEncryptionResponse<'a> {
+    pub idm: u64,
+    pub status: (u8, u8),
+    pub blocks: Vec<&'a [u8]>,
+}
+
+impl<'a> Response<'a> for ReadWithoutEncryptionResponse<'a> {
+    fn parse(rbuf: &'a [u8]) -> IResult<Self> {
+        Ok((
+            rbuf,
+            Self {
+                idm: 0,
+                status: (0, 0),
+                blocks: vec![],
+            },
+        ))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RequestSystemCode {
+    pub idm: u64,
+}
+
+impl<'a> Command<'a> for RequestSystemCode {
+    const CODE: CommandCode = CommandCode::RequestSystemCode;
+    type Response = RequestSystemCodeResponse<'a>;
+
+    fn write<'w>(&self, wbuf: &'w mut [u8]) -> Result<&'w [u8]> {
+        let mut offset = 1;
+        wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
+        wbuf.gwrite_with(self.idm, &mut offset, BE)?;
+        wbuf[0] = offset as u8;
+        Ok(&wbuf[..offset])
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RequestSystemCodeResponse<'a> {
+    pub idm: u64,
+    pub num_sys_codes: u8,
+    pub raw_sys_codes: &'a [u8],
+}
+
+impl<'a> Response<'a> for RequestSystemCodeResponse<'a> {
+    fn parse(rbuf: &'a [u8]) -> IResult<Self> {
+        Ok((
+            rbuf,
+            Self {
+                idm: 0,
+                num_sys_codes: 0,
+                raw_sys_codes: &[],
+            },
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cid_to_idm() {
+        // IDm from the example in the ACR-1252U manual.
+        assert_eq!(
+            cid_to_idm(&[0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57, 0x03]).unwrap(),
+            0x01010601CB095703
+        );
+    }
+
+    #[test]
+    fn test_read_without_encryption() {
+        // Example command from the ACR-1252U manual.
+        let mut wbuf = [0u8; 256];
+        let apdu = ReadWithoutEncryption {
+            idm: 0x01010601CB095703,
+            services: vec![0x0109],
+            blocks: vec![0x80],
+        }
+        .apdu(&mut wbuf)
+        .unwrap();
+        assert_eq!(
+            (apdu.cla, apdu.ins, apdu.p1, apdu.p2, apdu.le),
+            (0xFF, 0x00, 0x00, 0x00, None)
+        );
+        assert_eq!(
+            apdu.payload.expect("no payload"),
+            &[
+                0x10, 0x06, 0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57, 0x03, 0x01, 0x09, 0x01, 0x01,
+                0x80, 0x00
+            ],
+        );
+
+        let mut apdu_buf = [0u8; 256];
+        apdu.write(&mut apdu_buf);
+        assert_eq!(
+            &apdu_buf[..apdu.len()],
+            &[
+                0xFF, 0x00, 0x00, 0x00, 0x10, 0x10, 0x06, 0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57,
+                0x03, 0x01, 0x09, 0x01, 0x01, 0x80, 0x00
+            ],
+        );
+    }
+
+    #[test]
+    fn test_request_system_code() {
+        let mut wbuf = [0u8; 256];
+        let apdu = RequestSystemCode {
+            idm: 0x1122334455667788,
+        }
+        .apdu(&mut wbuf)
+        .unwrap();
+        assert_eq!(
+            (apdu.cla, apdu.ins, apdu.p1, apdu.p2, apdu.le),
+            (0xFF, 0x00, 0x00, 0x00, None)
+        );
+        assert_eq!(
+            apdu.payload.expect("no payload"),
+            &[10, 0x0C, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
+        );
+    }
+}

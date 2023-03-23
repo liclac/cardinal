@@ -1,8 +1,9 @@
 use pcsc::Card;
 use tracing::{debug, trace_span, warn};
 
+use crate::felica::Command;
 use crate::util::call_le;
-use crate::{atr, emv, Result};
+use crate::{atr, emv, felica, Result};
 
 #[derive(Debug)]
 pub struct Probe {
@@ -15,6 +16,9 @@ pub struct Probe {
 
     /// Reader attributes (from PCSC).
     pub reader: ReaderAttrs,
+
+    /// FeliCa data.
+    pub felica: Option<FeliCa>,
 
     /// EMV payment system data.
     pub emv: Option<EMV>,
@@ -33,12 +37,38 @@ pub fn probe(card: &mut Card) -> Result<Probe> {
 
     let mut wbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Request buffer.
     let mut rbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Response buffer.
-    Ok(Probe {
+
+    let mut probe = Probe {
         cid: probe_cid(card, &mut wbuf, &mut rbuf),
         atr: probe_atr(card, &mut rbuf),
         reader: probe_reader_attrs(card, &mut rbuf),
-        emv: EMV::probe(card, &mut wbuf, &mut rbuf),
-    })
+
+        // Application-specific probes to be filled in below.
+        felica: None,
+        emv: None,
+    };
+
+    // Try to infer the type of card, so we don't eg. try to ask a Suica for its EMV directory.
+    match probe.atr.as_ref().map(|atr| &atr.historical_bytes) {
+        Some(atr::HistoricalBytes::TLV(atr::HistoricalBytesTLV {
+            initial_access:
+                Some(atr::InitialAccess {
+                    card_name: atr::CardName::FeliCa,
+                    ..
+                }),
+            ..
+        })) => {
+            probe.felica = FeliCa::probe(
+                card,
+                &probe.cid.as_ref().unwrap_or(&vec![]),
+                &mut wbuf,
+                &mut rbuf,
+            )
+        }
+        _ => probe.emv = EMV::probe(card, &mut wbuf, &mut rbuf),
+    }
+
+    Ok(probe)
 }
 
 fn probe_cid(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<Vec<u8>> {
@@ -137,5 +167,35 @@ impl EMV {
         } else {
             None
         }
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct FeliCa {}
+
+impl FeliCa {
+    fn probe<'a>(card: &mut Card, cid: &[u8], wbuf: &mut [u8], rbuf: &mut [u8]) -> Option<Self> {
+        Self::try_probe(card, cid, wbuf, rbuf)
+            .map_err(|err| {
+                warn!("couldn't probe FeliCa card");
+                err
+            })
+            .ok()
+    }
+
+    fn try_probe<'a>(
+        card: &mut Card,
+        cid: &[u8],
+        wbuf: &mut [u8],
+        rbuf: &mut [u8],
+    ) -> Result<Self> {
+        let span = trace_span!("FeliCa");
+        let _enter = span.enter();
+
+        let idm = felica::cid_to_idm(cid)
+            .expect("FeliCa card returned invalid IDm; this is a bug, please report me!");
+        let rsp = felica::RequestSystemCode { idm }.call(card, wbuf, rbuf);
+        println!("{:?}", rsp);
+        Ok(Self {})
     }
 }

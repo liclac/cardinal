@@ -13,6 +13,7 @@ apdu = "0.4"
 nom = "7"
 byteorder = "1"
 num_enum = "0.5"
+scroll = "0.11"
 
 # CLI
 clap = { version = "4", features = [ "derive" ] }

@@ -18,6 +18,9 @@ pub enum Error {
     WrongTag { expected: Vec<u8>, actual: Vec<u8> },
 
     #[error(transparent)]
+    Scroll(#[from] scroll::Error),
+
+    #[error(transparent)]
     Nom(#[from] nom::error::Error<HexVec>),
 
     #[error(transparent)]
