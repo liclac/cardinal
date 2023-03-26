@@ -245,7 +245,6 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
                         "6X".fg::<ATRColorHB>(),
                         hex::encode_upper(pi)
                     );
-                    //println!(" ┃   │  └── [TODO]");
                 }
                 if let Some(atr::HistoricalBytesStatus { status, sw1sw2 }) = status.as_ref() {
                     print!(" ┃   └─── {:} — status:", "8X".fg::<ATRColorHB>());
