@@ -189,7 +189,30 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
                         "3X".fg::<ATRColorHB>(),
                         v.fg::<ATRColorHB>()
                     );
-                    println!(" ┃   │  └── [TODO]");
+                    if v & 0b1000_0000 > 0 {
+                        println!(" ┃   │  ├── [1--- ----] — Selection by Full DF Name");
+                    }
+                    if v & 0b0100_0000 > 0 {
+                        println!(" ┃   │  ├── [-1-- ----] — Selection by Partial DF Name");
+                    }
+                    if v & 0b0010_0000 > 0 {
+                        println!(" ┃   │  ├── [--1- ----] — Data available in DIR file");
+                    }
+                    if v & 0b0001_0000 > 0 {
+                        println!(" ┃   │  ├── [---1 ----] — Data available in ATR file");
+                    }
+                    if v & 0b0000_1000 > 0 {
+                        println!(" ┃   │  ├── [---- 1---] — File I/O by READ BINARY");
+                    }
+                    if v & 0b0000_0100 > 0 {
+                        println!(" ┃   │  ├── [---- -1--] — {}", "RESERVED".red());
+                    }
+                    if v & 0b0000_0010 > 0 {
+                        println!(" ┃   │  ├── [---- --1-] — {}", "RESERVED".red());
+                    }
+                    if v & 0b0000_0001 > 0 {
+                        println!(" ┃   │  ├── [---- ---1] — {}", "RESERVED".red());
+                    }
                 });
 
                 if let Some(ia) = initial_access.as_ref() {
