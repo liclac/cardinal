@@ -1,3 +1,5 @@
+mod probe;
+
 use anyhow::{anyhow, Result};
 use clap::Parser as _;
 use pcsc::Context;
@@ -40,13 +42,13 @@ impl Command {
     }
 
     fn probe(&self, args: &Args) -> Result<()> {
-        let span = trace_span!("list_readers");
+        let span = trace_span!("probe");
         let _enter = span.enter();
 
         let ctx = Context::establish(pcsc::Scope::User)?;
         let mut card = select_card(&ctx, &args.reader)?;
         debug!("Probing card...");
-        println!("{:#04X?}", cardinal::probe::probe(&mut card)?);
+        probe::probe(&mut card)?;
         Ok(())
     }
 

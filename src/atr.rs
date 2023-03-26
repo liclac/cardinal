@@ -7,6 +7,8 @@
 //!
 //! Useful online ATR parser: https://smartcard-atr.apdu.fr/
 
+use std::fmt::Display;
+
 use nom::bytes::complete::take;
 use nom::combinator::{cond, map};
 use nom::number::complete::{be_u16, be_u32, be_u8};
@@ -49,6 +51,12 @@ impl From<u8> for T0 {
     }
 }
 
+impl From<T0> for u8 {
+    fn from(t0: T0) -> Self {
+        t0.k | (t0.tx1 << 4)
+    }
+}
+
 /// A transmission protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
@@ -74,6 +82,12 @@ impl From<u8> for TDn {
             protocol: (v & 0b0000_1111).into(),
             txn: (v & 0b1111_0000) >> 4,
         }
+    }
+}
+
+impl From<TDn> for u8 {
+    fn from(tdn: TDn) -> Self {
+        u8::from(tdn.protocol) | (tdn.txn << 4)
     }
 }
 
@@ -189,7 +203,7 @@ pub enum Provider {
     Unknown(Vec<u8>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
 pub enum Standard {
     Iso14443a3 = 0x03,
@@ -198,7 +212,17 @@ pub enum Standard {
     Unknown(u8),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+impl Display for Standard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Iso14443a3 => write!(f, "ISO 14443"),
+            Self::FeliCa => write!(f, "FeliCa"),
+            Self::Unknown(v) => write!(f, "Unknown({:02X})", v),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u16)]
 pub enum CardName {
     MifareClassic1K = 0x0001,
@@ -216,6 +240,27 @@ pub enum CardName {
     SRIX = 0x0007,
     #[num_enum(catch_all)]
     Unknown(u16),
+}
+
+impl Display for CardName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MifareClassic1K => write!(f, "MIFARE Classic 1K"),
+            Self::MifareClassic4K => write!(f, "MIFARE Classic 4K"),
+            Self::MifareUltralight => write!(f, "MIFARE Ultralight"),
+            Self::MifareMini => write!(f, "MIFARE Mini"),
+            Self::MifareUltralightC => write!(f, "MIFARE Ultralight C"),
+            Self::MifarePlusSL12K => write!(f, "MIFARE Plus SL1 2K"),
+            Self::MifarePlusSL14K => write!(f, "MIFARE Plus SL1 4K"),
+            Self::MifarePlusSL22K => write!(f, "MIFARE Plus SL2 2K"),
+            Self::MifarePlusSL24K => write!(f, "MIFARE Plus SL2 4K"),
+            Self::TopazJewel => write!(f, "Topaz/Jewel"),
+            Self::FeliCa => write!(f, "FeliCa"),
+            Self::JCOP30 => write!(f, "JCOP 30"),
+            Self::SRIX => write!(f, "SRIX"),
+            Self::Unknown(v) => write!(f, "Unknown({:04X})", v),
+        }
+    }
 }
 
 fn parse_historical_bytes<'a>(data: &'a [u8]) -> IResult<HistoricalBytes> {
@@ -296,7 +341,7 @@ pub struct ATR {
     pub tx3: TXn<u8, u8, u8>,
 
     /// Historical bytes.
-    pub historical_bytes: HistoricalBytes,
+    pub historical_bytes: Option<HistoricalBytes>,
 
     /// Checksum byte. (We trust the reader to validate this.)
     pub tck: u8,
@@ -311,8 +356,13 @@ pub fn parse(data: &[u8]) -> crate::Result<ATR> {
     // TX4 is not a real thing as of writing and should not be here.
     assert!(tx3.td.map(|v| v.txn).unwrap_or_default() == 0x00);
 
-    let (data, historical_bytes) =
-        take(t0.k)(data).and_then(|(i, v)| parse_historical_bytes(v).map(|(_, v)| (i, v)))?;
+    let (data, historical_bytes) = if t0.k > 0 {
+        let (data, rawhb) = take(t0.k)(data)?;
+        let (_, hb) = parse_historical_bytes(rawhb)?;
+        (data, Some(hb))
+    } else {
+        (data, None)
+    };
     let (_, tck) = be_u8(data)?;
 
     Ok(ATR {
@@ -329,6 +379,16 @@ pub fn parse(data: &[u8]) -> crate::Result<ATR> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_t0_u8() {
+        assert_eq!(u8::from(T0::from(0x8E)), 0x8E);
+    }
+
+    #[test]
+    fn test_tdn_u8() {
+        assert_eq!(u8::from(TDn::from(0x81)), 0x81);
+    }
 
     #[test]
     fn test_parse_curve() {
@@ -365,7 +425,7 @@ mod tests {
                     }),
                 },
                 tx3: TXn::default(),
-                historical_bytes: HistoricalBytes::TLV(HistoricalBytesTLV {
+                historical_bytes: Some(HistoricalBytes::TLV(HistoricalBytesTLV {
                     raw: vec![
                         0x31, 0x80, 0x66, 0xB1, 0x84, 0x0C, 0x01, 0x6E, 0x01, 0x83, 0x00, 0x90,
                         0x00
@@ -377,7 +437,7 @@ mod tests {
                         status: Some(0x00),
                         sw1sw2: Some(0x9000)
                     }),
-                }),
+                })),
                 tck: 0x1C,
             }
         );
@@ -415,7 +475,7 @@ mod tests {
                     }),
                 },
                 tx3: TXn::default(),
-                historical_bytes: HistoricalBytes::TLV(HistoricalBytesTLV {
+                historical_bytes: Some(HistoricalBytes::TLV(HistoricalBytesTLV {
                     raw: vec![
                         0x4F, 0x0C, 0xA0, 0x00, 0x00, 0x03, 0x06, 0x11, 0x00, 0x3B, 0x00, 0x00,
                         0x00, 0x00
@@ -429,7 +489,7 @@ mod tests {
                     service_data: None,
                     pre_issuing_data: None,
                     status: None,
-                }),
+                })),
                 tck: 0x42,
             }
         );

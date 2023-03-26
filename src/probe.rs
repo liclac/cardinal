@@ -49,7 +49,11 @@ pub fn probe(card: &mut Card) -> Result<Probe> {
     };
 
     // Try to infer the type of card, so we don't eg. try to ask a Suica for its EMV directory.
-    match probe.atr.as_ref().map(|atr| &atr.historical_bytes) {
+    match probe
+        .atr
+        .as_ref()
+        .and_then(|atr| atr.historical_bytes.as_ref())
+    {
         Some(atr::HistoricalBytes::TLV(atr::HistoricalBytesTLV {
             initial_access:
                 Some(atr::InitialAccess {
