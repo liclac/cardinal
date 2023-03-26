@@ -196,17 +196,10 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
                     println!(" ┃   ├──┬ {:} — initial access", "4X".fg::<ATRColorHB>());
 
                     // Provider.
-                    // TODO: This match bit should be on atr::Provider itself.
-                    let (rid, name) = match &ia.rid {
-                        atr::Provider::PCSCWorkgroup => {
-                            (&[0xA0, 0x00, 0x00, 0x03, 0x06][..], "PC/SC Workgroup")
-                        }
-                        atr::Provider::Unknown(rid) => (&rid[..], "Unknown"),
-                    };
                     println!(
                         " ┃   │  ├── {} — provider: {}",
-                        hex::encode_upper(rid).fg::<ATRColorHB>(),
-                        name.fg::<ATRColorHB>()
+                        hex::encode_upper(ia.rid.id()).fg::<ATRColorHB>(),
+                        ia.rid.fg::<ATRColorHB>()
                     );
                     println!(
                         " ┃   │  ├── {:02X} — standard: {}",

@@ -180,7 +180,7 @@ pub struct InitialAccess {
 
 fn parse_initial_access(data: &[u8]) -> IResult<InitialAccess> {
     let (data, rid) = map(take(5usize), |v: &[u8]| match v {
-        &[0xA0, 0x00, 0x00, 0x03, 0x06] => Provider::PCSCWorkgroup,
+        PROVIDER_ID_PCSC_WORKGROUP => Provider::PCSCWorkgroup,
         _ => Provider::Unknown(v.to_owned()),
     })(data)?;
     let (data, standard) = map(be_u8, |v| v.into())(data)?;
@@ -197,10 +197,30 @@ fn parse_initial_access(data: &[u8]) -> IResult<InitialAccess> {
     ))
 }
 
+const PROVIDER_ID_PCSC_WORKGROUP: &[u8] = &[0xA0, 0x00, 0x00, 0x03, 0x06];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Provider {
     PCSCWorkgroup,
     Unknown(Vec<u8>),
+}
+
+impl Provider {
+    pub fn id(&self) -> &[u8] {
+        match self {
+            Self::PCSCWorkgroup => PROVIDER_ID_PCSC_WORKGROUP,
+            Self::Unknown(v) => &v,
+        }
+    }
+}
+
+impl Display for Provider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PCSCWorkgroup => write!(f, "PC/SC Workgroup"),
+            Self::Unknown(v) => write!(f, "Unknown({})", hex::encode_upper(v)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
