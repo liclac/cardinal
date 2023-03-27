@@ -3,7 +3,6 @@ pub mod ber;
 pub mod emv;
 pub mod felica;
 pub mod iso7816;
-pub mod probe;
 pub mod util;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
