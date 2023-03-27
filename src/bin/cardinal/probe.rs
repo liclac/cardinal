@@ -1,6 +1,6 @@
 use crate::Result;
 use anyhow::Context;
-use cardinal::{atr, util};
+use cardinal::{atr, emv, util};
 use owo_colors::{colors, OwoColorize};
 use pcsc::Card;
 use tap::{TapFallible, TapOptional};
@@ -14,11 +14,26 @@ pub fn probe(card: &mut Card) -> Result<()> {
     let _cid = probe_cid(card, &mut wbuf, &mut rbuf)
         .tap_err(|err| warn!("couldn't probe CID: {}", err))
         .ok();
-    let _atr = probe_atr(card, &mut rbuf)?;
+    let atr = probe_atr(card, &mut rbuf)?;
+
+    match get_atr_card_standard(&atr) {
+        atr::Standard::FeliCa => {
+            println!("--------------- FeliCa ---------------");
+            warn!("not yet implemented");
+        }
+        _ => {
+            println!("-------------- ISO 14443 -------------");
+            probe_emv(card, &mut wbuf, &mut rbuf)
+                .tap_err(|err| warn!("couldn't probe EMV: {}", err))
+                .unwrap_or(false);
+        }
+    }
 
     Ok(())
 }
 
+/// Probes the ISO 14443-4 card ID. Only for contactless cards.
+/// TODO: This shouldn't print a warning when using a contact reader.
 fn probe_cid(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<Vec<u8>> {
     let span = trace_span!("probe_cid");
     let _enter = span.enter();
@@ -31,6 +46,19 @@ fn probe_cid(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<Vec<u8
     Ok(cid)
 }
 
+fn get_atr_card_standard(atr: &atr::ATR) -> atr::Standard {
+    // Am I doing Rust right?
+    if let Some(atr::HistoricalBytes::TLV(atr::HistoricalBytesTLV {
+        initial_access: Some(atr::InitialAccess { standard, .. }),
+        ..
+    })) = atr.historical_bytes
+    {
+        standard
+    } else {
+        atr::Standard::Iso14443a3
+    }
+}
+
 type ATRColorTS = colors::Cyan;
 type ATRColorTDnMask = colors::Yellow;
 type ATRColorTDnProtocol = colors::Green;
@@ -38,6 +66,7 @@ type ATRColorTXn = colors::Yellow;
 type ATRColorHB = colors::Magenta;
 type ATRColorTck = colors::Cyan;
 
+/// Probes the ISO 7816 ATR (Answer-to-Reset).
 fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
     let span = trace_span!("probe_atr");
     let _enter = span.enter();
@@ -285,4 +314,43 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
         u8::from(atr.tck).fg::<ATRColorTck>()
     );
     Ok(atr)
+}
+
+/// Probes the card to figure out if it's an EMV payment card.
+fn probe_emv(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<bool> {
+    // TODO: Some cards don't have directories; we should fall back to AID spamming.
+    probe_emv_directory(card, wbuf, rbuf)
+}
+
+fn probe_emv_directory(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<bool> {
+    let span = trace_span!("probe_cid");
+    let _enter = span.enter();
+
+    debug!("Trying to select EMV directory...");
+    let dir = emv::Directory::select(card, wbuf, rbuf)?;
+
+    println!("┏╸{}", "EMV".italic());
+    println!("┗┱─┬╴{}", "Directory".italic());
+    println!(" ┃ ├─╴SFI for Elementary File: {}", dir.ef_sfi);
+    dir.lang_prefs.tap_some(|s| {
+        print!(" ┃ ├─╴Preferred Language(s):");
+        let mut cursor: &str = s.as_str();
+        while cursor.len() >= 2 {
+            let (lang, rest) = cursor.split_at(2);
+            cursor = rest;
+            print!(" {}", lang);
+        }
+        println!("");
+    });
+    dir.issuer_code_table_idx
+        .tap_some(|v| println!(" ┃ ├─╴Charset: ISO-8859-{}", v));
+    dir.fci_issuer_discretionary_data.tap_some(|v| {
+        println!(" ┃ ├─┬╴FCI Issuer Discretionary Data");
+        v.log_entry.tap_some(|(sfi, num)| {
+            println!(" ┃ │ ├─╴Log Entries — SFI: {} — {} records", sfi, num);
+        });
+        println!(" ┃ │ ╵");
+    });
+    println!(" ┃");
+    Ok(false)
 }
