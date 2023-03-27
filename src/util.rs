@@ -1,7 +1,7 @@
 use crate::{Error, Result};
 use tracing::{trace, trace_span};
 
-pub(crate) fn call_le<'w, 'r>(
+pub fn call_le<'w, 'r>(
     card: &mut pcsc::Card,
     wbuf: &'w mut [u8],
     rbuf: &'r mut [u8],
@@ -19,7 +19,7 @@ pub(crate) fn call_le<'w, 'r>(
     )
 }
 
-pub(crate) fn call_apdu<'w, 'r>(
+pub fn call_apdu<'w, 'r>(
     card: &mut pcsc::Card,
     wbuf: &'w mut [u8],
     rbuf: &'r mut [u8],

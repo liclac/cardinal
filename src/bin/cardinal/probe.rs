@@ -1,19 +1,34 @@
 use crate::Result;
 use anyhow::Context;
-use cardinal::atr;
+use cardinal::{atr, util};
 use owo_colors::{colors, OwoColorize};
 use pcsc::Card;
-use tap::TapOptional;
-use tracing::{debug, trace_span};
+use tap::{TapFallible, TapOptional};
+use tracing::{debug, trace_span, warn};
 
 pub fn probe(card: &mut Card) -> Result<()> {
     let mut wbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Request buffer.
     let mut rbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Response buffer.
 
     println!("---------- IDENTIFYING CARD ----------");
+    let _cid = probe_cid(card, &mut wbuf, &mut rbuf)
+        .tap_err(|err| warn!("couldn't probe CID: {}", err))
+        .ok();
     let _atr = probe_atr(card, &mut rbuf)?;
 
     Ok(())
+}
+
+fn probe_cid(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<Vec<u8>> {
+    let span = trace_span!("probe_cid");
+    let _enter = span.enter();
+
+    // PCSC pseudo-APDU, doesn't actually talk to the card.
+    let cid = util::call_le(card, wbuf, rbuf, 0xFF, 0xCA, 0x00, 0x00, 0)
+        .context("couldn't query CID")
+        .map(|v| v.to_owned())?;
+    println!("Card ID: {}", hex::encode_upper(&cid));
+    Ok(cid)
 }
 
 type ATRColorTS = colors::Cyan;
@@ -29,7 +44,7 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
 
     let raw = card
         .get_attribute(pcsc::Attribute::AtrString, rbuf)
-        .context("Couldn't read ATR: {}")?;
+        .context("couldn't read ATR")?;
     debug!(atr = format!("{:02X?}", raw), "Raw ATR");
 
     // Colourise the raw ATR.
