@@ -1,6 +1,6 @@
 use crate::Result;
 use anyhow::Context;
-use cardinal::{atr, emv, util};
+use cardinal::{atr, emv, iso7816, util};
 use owo_colors::{colors, OwoColorize};
 use pcsc::Card;
 use tap::{TapFallible, TapOptional};
@@ -351,6 +351,49 @@ fn probe_emv_directory(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Res
         });
         println!(" ┃ │ ╵");
     });
-    println!(" ┃");
+
+    // This should be an iterator, but I immediately start struggling with lifetimes if I try.
+    for i in 1.. {
+        println!(" ┃ │");
+        match (iso7816::ReadRecord {
+            sfi: dir.ef_sfi,
+            id: iso7816::RecordID::Number(i),
+        })
+        .call(card, wbuf, rbuf)
+        {
+            Err(cardinal::Error::APDU(0x6A, 0x83)) => break,
+            Err(err) => warn!(sfi = dir.ef_sfi, num = i, "Couldn't query record: {}", err),
+            Ok(rsp) => {
+                let rec: emv::DirectoryRecord = rsp.parse_into()?;
+                println!(" ┃ ├┬╴{}", format!("Record #{}", i).italic());
+                for (i, app) in rec.entry.applications.iter().enumerate() {
+                    println!(" ┃ │└┬╴{}", format!("Application #{}", i + 1).italic());
+                    println!(
+                        " ┃ │ ├─╴Application ID: {}",
+                        hex::encode_upper(&app.adf_name)
+                    );
+                    println!(" ┃ │ ├─╴Label: {}", app.app_label);
+                    app.app_preferred_name
+                        .as_ref()
+                        .tap_some(|v| println!(" ┃ │ ├─╴Preferred Name: {}", v));
+                    app.app_priority.tap_some(|v| {
+                        println!(
+                            " ┃ │ ├─╴Priority: {} — needs confirmation: {}",
+                            v & 0b0000_1111,
+                            (v & 0b1000_0000) >> 7 > 0
+                        )
+                    });
+                    app.dir_discretionary_template.as_ref().tap_some(|v| {
+                        println!(
+                            " ┃ │ ├─╴Directory Discretionary Template: {}",
+                            hex::encode_upper(&v)
+                        )
+                    });
+                }
+            }
+        };
+    }
+
+    println!(" ┃ ╵");
     Ok(false)
 }

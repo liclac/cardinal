@@ -5,7 +5,7 @@
 //!
 //! All data elements are defined in Book 1, Annex B.
 
-use crate::{ber, iso7816, Result};
+use crate::{ber, iso7816, util, Result};
 use pcsc::Card;
 use tracing::{trace_span, warn};
 
@@ -96,6 +96,95 @@ impl<'a> TryFrom<&'a [u8]> for FCIIssuerDiscretionaryData {
     }
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct DirectoryRecord {
+    /// 0x60: A single entry.
+    pub entry: DirectoryRecordEntry,
+}
+
+impl TryFrom<&[u8]> for DirectoryRecord {
+    type Error = crate::Error;
+
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        let span = trace_span!("DirectoryRecord");
+        let _enter = span.enter();
+
+        let (_, (tag, value)) = ber::parse_next(data)?;
+        util::expect_tag(&[0x70], tag)?;
+
+        Ok(Self {
+            entry: value.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct DirectoryRecordEntry {
+    /// 0x61: List of application definitions.
+    pub applications: Vec<Application>,
+}
+
+impl TryFrom<&[u8]> for DirectoryRecordEntry {
+    type Error = crate::Error;
+
+    fn try_from(data: &[u8]) -> Result<Self> {
+        let span = trace_span!("DirectoryRecordEntry");
+        let _enter = span.enter();
+
+        let mut slf = Self::default();
+        for res in ber::iter(data) {
+            let (tag, value) = res?;
+            match tag {
+                &[0x61] => slf.applications.push(value.try_into()?),
+                _ => warn!("unknown field: {:X?}", tag),
+            }
+        }
+
+        Ok(slf)
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Application {
+    /// 0x4F: SELECT'able ADF name.
+    pub adf_name: Vec<u8>,
+    /// 0x50: Human-readable label.
+    pub app_label: String,
+    /// 0x9F12: Human-readable preferred (display) name.
+    pub app_preferred_name: Option<String>,
+    /// 0x87: Application Priority Indicator. (TODO: Parse.)
+    pub app_priority: Option<u8>,
+    /// 0x73: Directory Discretionary Template.
+    pub dir_discretionary_template: Option<Vec<u8>>,
+}
+
+impl TryFrom<&[u8]> for Application {
+    type Error = crate::Error;
+
+    fn try_from(data: &[u8]) -> Result<Self> {
+        let span = trace_span!("Application");
+        let _enter = span.enter();
+
+        let mut slf = Self::default();
+        for res in ber::iter(data) {
+            let (tag, value) = res?;
+            match tag {
+                &[0x4F] => slf.adf_name = value.into(),
+                // This is technically incorrect - this isn't UTF-8, but the charset in Directory.
+                &[0x50] => slf.app_label = String::from_utf8_lossy(value).into(),
+                &[0x9F, 0x12] => {
+                    slf.app_preferred_name = Some(String::from_utf8_lossy(value).into())
+                }
+                &[0x87] => slf.app_priority = value.get(0).copied(),
+                &[0x73] => slf.dir_discretionary_template = Some(value.into()),
+                _ => warn!("unknown field: {:X?}", tag),
+            }
+        }
+
+        Ok(slf)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,6 +222,38 @@ mod tests {
                 fci_issuer_discretionary_data: Some(FCIIssuerDiscretionaryData {
                     log_entry: Some((11, 10)),
                 }),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_directory_record() {
+        let rsp: iso7816::ReadRecordResponse = [
+            0x70, 0x40, 0x61, 0x3E, 0x4F, 0x07, 0xA0, 0x00, 0x00, 0x00, 0x04, 0x10, 0x10, 0x50,
+            0x10, 0x44, 0x65, 0x62, 0x69, 0x74, 0x20, 0x4D, 0x61, 0x73, 0x74, 0x65, 0x72, 0x63,
+            0x61, 0x72, 0x64, 0x9F, 0x12, 0x10, 0x44, 0x65, 0x62, 0x69, 0x74, 0x20, 0x4D, 0x61,
+            0x73, 0x74, 0x65, 0x72, 0x63, 0x61, 0x72, 0x64, 0x87, 0x01, 0x01, 0x73, 0x0B, 0x9F,
+            0x0A, 0x08, 0x00, 0x01, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00,
+        ][..]
+            .into();
+        let rec: DirectoryRecord = rsp
+            .parse_into()
+            .expect("couldn't parse ReadRecordResponse into DirectoryRecord");
+        println!("{:#02X?}", rec);
+        assert_eq!(
+            rec,
+            DirectoryRecord {
+                entry: DirectoryRecordEntry {
+                    applications: vec![Application {
+                        adf_name: vec![0xA0, 0x0, 0x0, 0x0, 0x4, 0x10, 0x10],
+                        app_label: "Debit Mastercard".into(),
+                        app_preferred_name: Some("Debit Mastercard".into()),
+                        app_priority: Some(1),
+                        dir_discretionary_template: Some(vec![
+                            0x9F, 0xA, 0x8, 0x0, 0x1, 0x5, 0x1, 0x0, 0x0, 0x0, 0x0
+                        ]),
+                    }],
+                }
             }
         );
     }

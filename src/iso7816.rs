@@ -149,6 +149,78 @@ impl<'a> TryFrom<&'a [u8]> for FileControlInfo<'a> {
     }
 }
 
+/// ID for a READ RECORD command.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RecordID {
+    /// Select by DF name.
+    Number(u8),
+}
+
+// A READ RECORD command.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReadRecord {
+    pub sfi: u8,
+    pub id: RecordID,
+}
+
+impl ReadRecord {
+    pub fn exec<'r>(
+        self,
+        card: &mut Card,
+        wbuf: &mut [u8],
+        rbuf: &'r mut [u8],
+    ) -> Result<&'r [u8]> {
+        util::call_apdu(card, wbuf, rbuf, self.into())
+    }
+
+    pub fn call<'r>(
+        self,
+        card: &mut Card,
+        wbuf: &mut [u8],
+        rbuf: &'r mut [u8],
+    ) -> Result<ReadRecordResponse<'r>> {
+        Ok(self.exec(card, wbuf, rbuf)?.into())
+    }
+}
+
+impl<'a> From<ReadRecord> for Command<'a> {
+    fn from(v: ReadRecord) -> Self {
+        Self::new_with_le(
+            0x00,
+            0xB2,
+            match v.id {
+                RecordID::Number(num) => num,
+            },
+            (v.sfi << 3)
+                | match v.id {
+                    RecordID::Number(_) => 0b0000_0100,
+                },
+            0x00,
+        )
+    }
+}
+
+/// Response type for a READ RECORD command.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ReadRecordResponse<'a> {
+    pub data: &'a [u8],
+}
+
+impl<'a> ReadRecordResponse<'a> {
+    pub fn parse_into<R: TryFrom<&'a [u8]>>(&self) -> Result<R, R::Error>
+    where
+        R::Error: From<crate::Error>,
+    {
+        R::try_from(self.data.into())
+    }
+}
+
+impl<'a> From<&'a [u8]> for ReadRecordResponse<'a> {
+    fn from(data: &'a [u8]) -> Self {
+        Self { data }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,5 +239,17 @@ mod tests {
             rsp.fci.pt,
             Some(&[0x88, 0x01, 0x01, 0x5F, 0x2D, 0x02, 0x65, 0x6E, 0x9F, 0x11, 0x01, 0x01][..])
         );
+    }
+
+    #[test]
+    fn test_apdu_read_record() {
+        let c: apdu::Command = (ReadRecord {
+            sfi: 1,
+            id: RecordID::Number(1),
+        })
+        .into();
+        let mut buf = [0u8; 256];
+        c.write(&mut buf[..]);
+        assert_eq!(&buf[..c.len()], &[0x00, 0xB2, 0x01, 0x0C, 0x00]);
     }
 }
