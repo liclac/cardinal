@@ -355,15 +355,20 @@ fn probe_emv_directory(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Res
     // This should be an iterator, but I immediately start struggling with lifetimes if I try.
     for i in 1.. {
         println!(" ┃ │");
+        debug!(sfi = dir.ef_sfi, num = i, "Trying next record...");
         match (iso7816::ReadRecord {
             sfi: dir.ef_sfi,
             id: iso7816::RecordID::Number(i),
         })
         .call(card, wbuf, rbuf)
         {
-            Err(cardinal::Error::APDU(0x6A, 0x83)) => break,
+            Err(cardinal::Error::APDU(0x6A, 0x83)) => {
+                debug!(sfi = dir.ef_sfi, num = i, "No more records");
+                break;
+            }
             Err(err) => warn!(sfi = dir.ef_sfi, num = i, "Couldn't query record: {}", err),
             Ok(rsp) => {
+                debug!(sfi = dir.ef_sfi, num = i, "Got a record!");
                 let rec: emv::DirectoryRecord = rsp.parse_into()?;
                 println!(" ┃ ├┬╴{}", format!("Record #{}", i).italic());
                 for (i, app) in rec.entry.applications.iter().enumerate() {
