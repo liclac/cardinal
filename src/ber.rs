@@ -27,6 +27,21 @@ pub fn is_constructed(tag: &[u8]) -> bool {
     tag.first().unwrap_or(&0) & (1 << 5) != 0
 }
 
+/// Turns a tag into a u32 value for easier storage.
+///
+/// Although there's technically no upper limit to the size of a tag, I've never seen one
+/// bigger than a u32. If you find one, please tell me and I will widen this.
+pub fn tag_to_u32(tag: &[u8]) -> u32 {
+    match tag.len() {
+        0 => 0,
+        1 => tag[0] as u32,
+        2 => BigEndian::read_u16(tag) as u32,
+        3 => BigEndian::read_u24(tag),
+        4 => BigEndian::read_u32(tag),
+        _ => panic!("tag is bigger than a u32; if this is error was spotted in the wild, please tell me and I will increase this limit"),
+    }
+}
+
 /// Parses a tag.
 ///
 /// If bits 1-5 of the first byte are all set, this is a multi-byte tag, continuing until
@@ -117,6 +132,12 @@ impl<'a> Iterator for Iter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_tag_to_u32() {
+        assert_eq!(tag_to_u32(&[0x6F]), 0x6F);
+        assert_eq!(tag_to_u32(&[0xBF, 0x0C]), 0xBF0C);
+    }
 
     #[test]
     fn test_is_constructed_0x6f() {

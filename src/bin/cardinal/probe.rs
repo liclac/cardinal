@@ -318,12 +318,28 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
 
 /// Probes the card to figure out if it's an EMV payment card.
 fn probe_emv(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<bool> {
+    let span = trace_span!("EMV");
+    let _enter = span.enter();
+
     // TODO: Some cards don't have directories; we should fall back to AID spamming.
-    probe_emv_directory(card, wbuf, rbuf)
+    for app in probe_emv_directory(card, wbuf, rbuf)? {
+        debug!(
+            adf_name = hex::encode_upper(app.adf_name),
+            label = app.app_label,
+            "Probing application..."
+        );
+        probe_emv_application(card, wbuf, rbuf, app.adf_name)?;
+    }
+    Ok(false)
 }
 
-fn probe_emv_directory(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<bool> {
-    let span = trace_span!("probe_cid");
+/// Probes the EMV directory and returns a list of application entries.
+fn probe_emv_directory(
+    card: &mut Card,
+    wbuf: &mut [u8],
+    rbuf: &mut [u8],
+) -> Result<Vec<emv::Application>> {
+    let span = trace_span!("directory");
     let _enter = span.enter();
 
     debug!("Trying to select EMV directory...");
@@ -353,6 +369,7 @@ fn probe_emv_directory(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Res
     });
 
     // This should be an iterator, but I immediately start struggling with lifetimes if I try.
+    let mut apps: Vec<emv::Application> = vec![];
     for i in 1.. {
         println!(" ┃ │");
         debug!(sfi = dir.ef_sfi, num = i, "Trying next record...");
@@ -372,6 +389,7 @@ fn probe_emv_directory(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Res
                 let rec: emv::DirectoryRecord = rsp.parse_into()?;
                 println!(" ┃ ├┬╴{}", format!("Record #{}", i).italic());
                 for (i, app) in rec.entry.applications.iter().enumerate() {
+                    apps.push(app.clone());
                     println!(" ┃ │└┬╴{}", format!("Application #{}", i + 1).italic());
                     println!(
                         " ┃ │ ├─╴Application ID: {}",
@@ -400,5 +418,20 @@ fn probe_emv_directory(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Res
     }
 
     println!(" ┃ ╵");
-    Ok(false)
+    Ok(apps)
+}
+
+fn probe_emv_application(
+    card: &mut Card,
+    wbuf: &mut [u8],
+    rbuf: &mut [u8],
+    adf_name: Vec<u8>,
+) -> Result<bool> {
+    let span = trace_span!("application");
+    let _enter = span.enter();
+
+    debug!("Selecting application...");
+    iso7816::select_name(card, wbuf, rbuf, &adf_name)?;
+
+    Ok(true)
 }

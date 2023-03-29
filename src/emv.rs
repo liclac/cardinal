@@ -12,7 +12,7 @@ use tracing::{trace_span, warn};
 pub const DIRECTORY_DF_NAME: &str = "1PAY.SYS.DDF01";
 
 /// The EMV Directory, also known as the Payment System Environment.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Directory {
     /// 0x88: SFI of the Directory Elementary File. (Values 1-30.)
     pub ef_sfi: u8,
@@ -31,7 +31,7 @@ pub struct Directory {
 
 impl<'a> Directory {
     pub fn select(card: &mut Card, wbuf: &mut [u8], rbuf: &'a mut [u8]) -> Result<Self> {
-        iso7816::select_name(card, wbuf, rbuf, DIRECTORY_DF_NAME)
+        iso7816::select_name(card, wbuf, rbuf, DIRECTORY_DF_NAME.as_bytes())
     }
 }
 
@@ -67,7 +67,7 @@ impl<'a> TryFrom<&'a [u8]> for Directory {
 }
 
 /// 0xBF0C: FCI Issuer Discretionary Data. (var, <=222)
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FCIIssuerDiscretionaryData {
     /// 0x9F4D: Log Entry (SFI and number of records). (b, 2)
     pub log_entry: Option<(u8, u8)>,
@@ -96,7 +96,7 @@ impl<'a> TryFrom<&'a [u8]> for FCIIssuerDiscretionaryData {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DirectoryRecord {
     /// 0x60: A single entry.
     pub entry: DirectoryRecordEntry,
@@ -118,7 +118,7 @@ impl TryFrom<&[u8]> for DirectoryRecord {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DirectoryRecordEntry {
     /// 0x61: List of application definitions.
     pub applications: Vec<Application>,
@@ -144,7 +144,7 @@ impl TryFrom<&[u8]> for DirectoryRecordEntry {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Application {
     /// 0x4F: SELECT'able ADF name.
     pub adf_name: Vec<u8>,
@@ -170,9 +170,9 @@ impl TryFrom<&[u8]> for Application {
             let (tag, value) = res?;
             match tag {
                 &[0x4F] => slf.adf_name = value.into(),
-                // This is technically incorrect - this isn't UTF-8, but the charset in Directory.
                 &[0x50] => slf.app_label = String::from_utf8_lossy(value).into(),
                 &[0x9F, 0x12] => {
+                    // Technically incorrect; this isn't UTF-8, but the charset in Directory.
                     slf.app_preferred_name = Some(String::from_utf8_lossy(value).into())
                 }
                 &[0x87] => slf.app_priority = value.get(0).copied(),

@@ -7,7 +7,7 @@ pub fn select_name<'r, R: TryFrom<&'r [u8]>>(
     card: &mut Card,
     wbuf: &mut [u8],
     rbuf: &'r mut [u8],
-    name: &str,
+    name: &[u8],
 ) -> Result<R, R::Error>
 where
     R::Error: From<crate::Error>,
@@ -24,7 +24,7 @@ where
 #[derive(Debug, PartialEq, Eq)]
 pub enum SelectID<'a> {
     /// Select by DF name.
-    Name(&'a str),
+    Name(&'a [u8]),
 }
 
 /// Mode for a SELECT command.
@@ -76,7 +76,7 @@ impl<'a> From<Select<'a>> for Command<'a> {
             },
             0x00,
             match v.id {
-                SelectID::Name(name) => name.as_bytes(),
+                SelectID::Name(name) => name,
             },
         )
     }
