@@ -324,7 +324,7 @@ fn probe_emv(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<bool> 
     // TODO: Some cards don't have directories; we should fall back to AID spamming.
     for app in probe_emv_directory(card, wbuf, rbuf)? {
         debug!(
-            adf_name = hex::encode_upper(app.adf_name),
+            adf_name = hex::encode_upper(&app.adf_name),
             label = app.app_label,
             "Probing application..."
         );
@@ -338,7 +338,7 @@ fn probe_emv_directory(
     card: &mut Card,
     wbuf: &mut [u8],
     rbuf: &mut [u8],
-) -> Result<Vec<emv::Application>> {
+) -> Result<Vec<emv::DirectoryApplication>> {
     let span = trace_span!("directory");
     let _enter = span.enter();
 
@@ -369,7 +369,7 @@ fn probe_emv_directory(
     });
 
     // This should be an iterator, but I immediately start struggling with lifetimes if I try.
-    let mut apps: Vec<emv::Application> = vec![];
+    let mut apps: Vec<emv::DirectoryApplication> = vec![];
     for i in 1.. {
         println!(" ┃ │");
         debug!(sfi = dir.ef_sfi, num = i, "Trying next record...");
@@ -430,8 +430,12 @@ fn probe_emv_application(
     let span = trace_span!("application");
     let _enter = span.enter();
 
-    debug!("Selecting application...");
-    iso7816::select_name(card, wbuf, rbuf, &adf_name)?;
+    debug!(
+        adf_name = hex::encode_upper(&adf_name),
+        "Selecting application..."
+    );
+    let app = emv::Application::select(card, wbuf, rbuf, &adf_name)?;
+    println!("{:#02X?}", app);
 
     Ok(true)
 }

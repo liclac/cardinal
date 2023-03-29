@@ -48,7 +48,7 @@ pub fn tag_to_u32(tag: &[u8]) -> u32 {
 /// and including the first subsequent byte without bit 8 set.
 ///
 /// See EMV Book 3, Annex B1: "Coding of the Tag Field of BER-TLV Data Objects".
-fn take_tag(data: &[u8]) -> IResult<&[u8]> {
+pub fn take_tag(data: &[u8]) -> IResult<&[u8]> {
     let (rest, short) = take(1usize)(data)?;
     if short[0] & 0b0001_1111 != 0b0001_1111 {
         Ok((rest, short))
@@ -75,7 +75,7 @@ fn take_tag(data: &[u8]) -> IResult<&[u8]> {
 /// for an "indeterminate length" value, this is not in the ISO 7816 or EMV subsets.
 ///
 /// See EMV Book 3, Annex B2: "Coding of the Length Field of BER-TLV Data Objects".
-fn take_len(data_: &[u8]) -> IResult<usize> {
+pub fn take_len(data_: &[u8]) -> IResult<usize> {
     let (data, lenlen) = be_u8(data_)?;
     if lenlen <= 127 {
         Ok((data, lenlen as usize))
