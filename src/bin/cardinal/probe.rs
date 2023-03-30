@@ -322,6 +322,7 @@ fn probe_emv(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<bool> 
     let _enter = span.enter();
 
     // TODO: Some cards don't have directories; we should fall back to AID spamming.
+    println!("┏╸{}", "EMV".italic());
     for app in probe_emv_directory(card, wbuf, rbuf)? {
         debug!(
             adf_name = hex::encode_upper(&app.adf_name),
@@ -345,7 +346,6 @@ fn probe_emv_directory(
     debug!("Trying to select EMV directory...");
     let dir = emv::Directory::select(card, wbuf, rbuf)?;
 
-    println!("┏╸{}", "EMV".italic());
     println!("┗┱─┬╴{}", "Directory".italic());
     println!(" ┃ ├─╴SFI for Elementary File: {}", dir.ef_sfi);
     dir.lang_prefs.tap_some(|s| {
@@ -360,13 +360,8 @@ fn probe_emv_directory(
     });
     dir.issuer_code_table_idx
         .tap_some(|v| println!(" ┃ ├─╴Charset: ISO-8859-{}", v));
-    dir.fci_issuer_discretionary_data.tap_some(|v| {
-        println!(" ┃ ├─┬╴FCI Issuer Discretionary Data");
-        v.log_entry.tap_some(|(sfi, num)| {
-            println!(" ┃ │ ├─╴Log Entries — SFI: {} — {} records", sfi, num);
-        });
-        println!(" ┃ │ ╵");
-    });
+    dir.fci_issuer_discretionary_data
+        .tap_some(print_fci_issuer_discretionary_data);
 
     // This should be an iterator, but I immediately start struggling with lifetimes if I try.
     let mut apps: Vec<emv::DirectoryApplication> = vec![];
@@ -435,7 +430,79 @@ fn probe_emv_application(
         "Selecting application..."
     );
     let app = emv::Application::select(card, wbuf, rbuf, &adf_name)?;
-    println!("{:#02X?}", app);
+    println!(
+        " ┠─┬╴Application╺╸{}",
+        hex::encode_upper(&adf_name).italic()
+    );
+    println!(" ┃ ├─╴Label: {}", app.app_label);
+    app.app_priority.tap_some(|v| {
+        println!(
+            " ┃ ├─╴Priority: {} — needs confirmation: {}",
+            v & 0b0000_1111,
+            (v & 0b1000_0000) >> 7 > 0
+        )
+    });
+    app.lang_prefs.tap_some(|s| {
+        print!(" ┃ ├─╴Preferred Language(s):");
+        let mut cursor: &str = s.as_str();
+        while cursor.len() >= 2 {
+            let (lang, rest) = cursor.split_at(2);
+            cursor = rest;
+            print!(" {}", lang);
+        }
+        println!("");
+    });
+    app.issuer_code_table_idx
+        .tap_some(|v| println!(" ┃ ├─╴Charset: ISO-8859-{}", v));
+    app.app_preferred_name
+        .as_ref()
+        .tap_some(|v| println!(" ┃ ├─╴Preferred Name: {}", v));
+
+    if app.pdol.is_some() || app.fci_issuer_discretionary_data.is_some() {
+        println!(" ┃ │");
+    }
+    app.pdol.tap_some(|v| {
+        println!(" ┃ ├┬╴Data Objects for Processing Options");
+        for (tag, _) in v {
+            let name = match tag {
+                // From: https://neapay.com/online-tools/emv-tags-list.html
+                0x9F5C => "DS Requested Operator ID",
+                _ => "???",
+            };
+            println!(" ┃ │├─╴[{:04X}] {}", tag, name);
+        }
+        println!(" ┃ │╵");
+    });
+    app.fci_issuer_discretionary_data
+        .tap_some(print_fci_issuer_discretionary_data);
+    println!(" ┃ ╵");
 
     Ok(true)
+}
+
+fn print_fci_issuer_discretionary_data(v: &emv::FCIIssuerDiscretionaryData) {
+    println!(" ┃ ├┬╴FCI Issuer Discretionary Data");
+    v.log_entry.tap_some(|(sfi, num)| {
+        println!(" ┃ │├─╴Log Entries — SFI: {} — {} records", sfi, num);
+    });
+    v.app_capability_info.tap_some(|(v1, v2, v3)| {
+        println!(
+            " ┃ │├─╴Application Capabilitiy Info: {:02X} {:02X} {:02X}",
+            v1, v2, v3
+        );
+    });
+    v.ds_id.as_ref().tap_some(|v| {
+        println!(" ┃ │├─╴Card Number + Sequence: {}", hex::encode_upper(v));
+    });
+    v.unknown_9f6e.as_ref().tap_some(|v| {
+        println!(" ┃ │├─╴Unknown (9F6E): {}", hex::encode_upper(v));
+    });
+    v.app_selection_reg_propr_data.as_ref().tap_some(|v| {
+        println!(" ┃ │├┬╴Application Selection Proprietary Data");
+        for (tag, val) in v.iter() {
+            println!(" ┃ ││├─╴{:04X} — {}", tag, hex::encode_upper(val));
+        }
+        println!(" ┃ ││╵");
+    });
+    println!(" ┃ │╵");
 }
