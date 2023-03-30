@@ -15,6 +15,7 @@ nom = "7"
 byteorder = "1"
 num_enum = "0.5"
 scroll = "0.11"
+encoding_rs = "0.8"
 
 # CLI
 clap = { version = "4", features = [ "derive" ] }

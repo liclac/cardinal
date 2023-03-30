@@ -348,7 +348,7 @@ fn probe_emv_directory(
 
     println!("┗┱─┬╴{}", "Directory".italic());
     println!(" ┃ ├─╴SFI for Elementary File: {}", dir.ef_sfi);
-    dir.lang_prefs.tap_some(|s| {
+    dir.lang_prefs.as_ref().tap_some(|s| {
         print!(" ┃ ├─╴Preferred Language(s):");
         let mut cursor: &str = s.as_str();
         while cursor.len() >= 2 {
@@ -361,7 +361,8 @@ fn probe_emv_directory(
     dir.issuer_code_table_idx
         .tap_some(|v| println!(" ┃ ├─╴Charset: ISO-8859-{}", v));
     dir.fci_issuer_discretionary_data
-        .tap_some(print_fci_issuer_discretionary_data);
+        .as_ref()
+        .tap_some(|v| print_fci_issuer_discretionary_data(v));
 
     // This should be an iterator, but I immediately start struggling with lifetimes if I try.
     let mut apps: Vec<emv::DirectoryApplication> = vec![];
@@ -381,7 +382,7 @@ fn probe_emv_directory(
             Err(err) => warn!(sfi = dir.ef_sfi, num = i, "Couldn't query record: {}", err),
             Ok(rsp) => {
                 debug!(sfi = dir.ef_sfi, num = i, "Got a record!");
-                let rec: emv::DirectoryRecord = rsp.parse_into()?;
+                let rec = emv::DirectoryRecord::parse(rsp.data, &dir)?;
                 println!(" ┃ ├┬╴{}", format!("Record #{}", i).italic());
                 for (i, app) in rec.entry.applications.iter().enumerate() {
                     apps.push(app.clone());

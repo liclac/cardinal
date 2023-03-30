@@ -10,7 +10,7 @@
 
 use crate::{ber, iso7816, util, Result};
 use pcsc::Card;
-use tap::TapFallible;
+use tap::{TapFallible, TapOptional};
 use tracing::{trace_span, warn};
 
 pub const DIRECTORY_DF_NAME: &str = "1PAY.SYS.DDF01";
@@ -137,10 +137,8 @@ pub struct DirectoryRecord {
     pub entry: DirectoryRecordEntry,
 }
 
-impl TryFrom<&[u8]> for DirectoryRecord {
-    type Error = crate::Error;
-
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+impl DirectoryRecord {
+    pub fn parse(data: &[u8], dir: &Directory) -> Result<Self> {
         let span = trace_span!("DirectoryRecord");
         let _enter = span.enter();
 
@@ -148,7 +146,7 @@ impl TryFrom<&[u8]> for DirectoryRecord {
         util::expect_tag(&[0x70], tag)?;
 
         Ok(Self {
-            entry: value.try_into()?,
+            entry: DirectoryRecordEntry::parse(value, dir)?,
         })
     }
 }
@@ -159,10 +157,8 @@ pub struct DirectoryRecordEntry {
     pub applications: Vec<DirectoryApplication>,
 }
 
-impl TryFrom<&[u8]> for DirectoryRecordEntry {
-    type Error = crate::Error;
-
-    fn try_from(data: &[u8]) -> Result<Self> {
+impl DirectoryRecordEntry {
+    pub fn parse(data: &[u8], dir: &Directory) -> Result<Self> {
         let span = trace_span!("DirectoryRecordEntry");
         let _enter = span.enter();
 
@@ -170,7 +166,9 @@ impl TryFrom<&[u8]> for DirectoryRecordEntry {
         for res in ber::iter(data) {
             let (tag, value) = res?;
             match tag {
-                &[0x61] => slf.applications.push(value.try_into()?),
+                &[0x61] => slf
+                    .applications
+                    .push(DirectoryApplication::parse(value, &dir)?),
                 _ => warn!("unknown field: {:X?}", tag),
             }
         }
@@ -193,10 +191,8 @@ pub struct DirectoryApplication {
     pub dir_discretionary_template: Option<Vec<u8>>,
 }
 
-impl TryFrom<&[u8]> for DirectoryApplication {
-    type Error = crate::Error;
-
-    fn try_from(data: &[u8]) -> Result<Self> {
+impl DirectoryApplication {
+    pub fn parse(data: &[u8], dir: &Directory) -> Result<Self> {
         let span = trace_span!("DirectoryApplication");
         let _enter = span.enter();
 
@@ -207,8 +203,8 @@ impl TryFrom<&[u8]> for DirectoryApplication {
                 &[0x4F] => slf.adf_name = value.into(),
                 &[0x50] => slf.app_label = String::from_utf8_lossy(value).into(),
                 &[0x9F, 0x12] => {
-                    // Technically incorrect; this isn't UTF-8, but the charset in Directory.
-                    slf.app_preferred_name = Some(String::from_utf8_lossy(value).into())
+                    slf.app_preferred_name =
+                        parse_app_preferred_name(value, dir.issuer_code_table_idx)
                 }
                 &[0x87] => slf.app_priority = value.get(0).copied(),
                 &[0x73] => slf.dir_discretionary_template = Some(value.into()),
@@ -218,6 +214,43 @@ impl TryFrom<&[u8]> for DirectoryApplication {
 
         Ok(slf)
     }
+}
+
+fn parse_app_preferred_name(v: &[u8], code_idx: Option<u8>) -> Option<String> {
+    let span = trace_span!("app_preferred_name");
+    let _enter = span.enter();
+
+    let idx = code_idx
+        .tap_none(|| warn!("no charset info, falling back to ISO-8859-1"))
+        .unwrap_or(1);
+    let enc = match idx {
+        // These are all X => ISO-8859-X, but some of them have alternate names.
+        1 => encoding_rs::WINDOWS_1252,
+        2 => encoding_rs::ISO_8859_2,
+        3 => encoding_rs::ISO_8859_3,
+        4 => encoding_rs::ISO_8859_4,
+        5 => encoding_rs::ISO_8859_5,
+        6 => encoding_rs::ISO_8859_6,
+        7 => encoding_rs::ISO_8859_7,
+        8 => encoding_rs::ISO_8859_8,
+        9 => encoding_rs::WINDOWS_1254,
+        10 => encoding_rs::ISO_8859_10,
+        11 => encoding_rs::WINDOWS_874,
+        // 12 was supposed to be Devangari, but it was abandoned in 1997.
+        13 => encoding_rs::ISO_8859_13,
+        14 => encoding_rs::ISO_8859_14,
+        15 => encoding_rs::ISO_8859_15,
+        16 => encoding_rs::ISO_8859_16,
+        _ => {
+            warn!("unsupported charset: ISO-8859-{}", idx);
+            return None;
+        }
+    };
+    let (name, _, malformed) = enc.decode(v);
+    if malformed {
+        warn!("label contains invalid characters");
+    }
+    Some(name.into())
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -260,6 +293,7 @@ impl TryFrom<&[u8]> for Application {
         let _enter = span.enter();
 
         let mut slf = Self::default();
+        let mut tmp_preferred_name = None;
         for res in ber::iter(data) {
             let (tag, value) = res?;
             match tag {
@@ -272,10 +306,7 @@ impl TryFrom<&[u8]> for Application {
                 }
                 &[0x5F, 0x2D] => slf.lang_prefs = Some(String::from_utf8_lossy(value).into()),
                 &[0x9F, 0x11] => slf.issuer_code_table_idx = value.first().copied(),
-                &[0x9F, 0x12] => {
-                    // Technically incorrect; this isn't UTF-8, but the charset in Directory.
-                    slf.app_preferred_name = Some(String::from_utf8_lossy(value).into())
-                }
+                &[0x9F, 0x12] => tmp_preferred_name = Some(value),
                 &[0xBF, 0x0C] => {
                     slf.fci_issuer_discretionary_data = value
                         .try_into()
@@ -290,6 +321,10 @@ impl TryFrom<&[u8]> for Application {
                 _ => warn!("unknown field: {:X?}", tag),
             }
         }
+
+        // Tags can appear in any order, so defer parsing of tags that depend on others.
+        slf.app_preferred_name =
+            tmp_preferred_name.and_then(|v| parse_app_preferred_name(v, slf.issuer_code_table_idx));
 
         Ok(slf)
     }
@@ -358,8 +393,13 @@ mod tests {
             0x0A, 0x08, 0x00, 0x01, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00,
         ][..]
             .into();
-        let rec: DirectoryRecord = rsp
-            .parse_into()
+        let dir = Directory {
+            ef_sfi: 1,
+            lang_prefs: Some("en".into()),
+            issuer_code_table_idx: Some(1),
+            ..Default::default()
+        };
+        let rec = DirectoryRecord::parse(rsp.data, &dir)
             .expect("couldn't parse ReadRecordResponse into DirectoryRecord");
         println!("{:#02X?}", rec);
         assert_eq!(
