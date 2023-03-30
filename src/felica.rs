@@ -152,6 +152,39 @@ impl<'a> Response<'a> for ReadWithoutEncryptionResponse<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+#[repr(u16)]
+pub enum SystemCode {
+    /// Sytem that uses regular NFC NDEF.
+    NDEF = 0x12FC,
+    /// Host-based Emulation for NFC-F (HCE-F).
+    HostEmulation = 0x4000,
+    /// FeliCa Lite-S
+    FeliCaLiteS = 0x88B4,
+    /// FeliCa Secure ID
+    FeliCaSecureID = 0x957A,
+    /// FeliCa Networks "Common Area".
+    FeliCaCommon = 0xFE00,
+    /// FeliCa Plug
+    FeliCaPlug = 0xFEE1,
+    #[num_enum(catch_all)]
+    Unknown(u16),
+}
+
+impl std::fmt::Display for SystemCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NDEF => write!(f, "NFC NDEF"),
+            Self::HostEmulation => write!(f, "Host-based Emulation"),
+            Self::FeliCaLiteS => write!(f, "FeliCa Lite-S"),
+            Self::FeliCaSecureID => write!(f, "FeliCa Secure ID"),
+            Self::FeliCaCommon => write!(f, "FeliCa Common"),
+            Self::FeliCaPlug => write!(f, "FeliCa Plug"),
+            Self::Unknown(v) => write!(f, "Unknown({:04X})", v),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct RequestSystemCode {
     pub idm: u64,
@@ -173,7 +206,7 @@ impl<'a> Command<'a> for RequestSystemCode {
 #[derive(Debug, PartialEq, Eq)]
 pub struct RequestSystemCodeResponse {
     pub idm: u64,
-    pub systems: Vec<u16>,
+    pub systems: Vec<SystemCode>,
 }
 
 impl<'a> Response<'a> for RequestSystemCodeResponse {
@@ -189,7 +222,7 @@ impl<'a> Response<'a> for RequestSystemCodeResponse {
         let (data, systems_data) = take(num_systems * 2)(data)?;
         let systems = systems_data
             .chunks(2)
-            .map(|data| u16::from_le_bytes([data[0], data[1]]))
+            .map(|data| u16::from_be_bytes([data[0], data[1]]).into())
             .collect();
         Ok((data, Self { idm, systems }))
     }
@@ -324,7 +357,7 @@ mod tests {
             .unwrap(),
             RequestSystemCodeResponse {
                 idm: 0x01010A108E1BAD39,
-                systems: vec![0x0300, 0x00FE],
+                systems: vec![SystemCode::Unknown(0x0003), SystemCode::FeliCaCommon],
             },
         )
     }

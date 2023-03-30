@@ -1,17 +1,17 @@
 use crate::Result;
 use anyhow::Context;
-use cardinal::{atr, emv, iso7816, util};
+use cardinal::{atr, emv, felica, iso7816, util};
 use owo_colors::{colors, OwoColorize};
 use pcsc::Card;
 use tap::{TapFallible, TapOptional};
-use tracing::{debug, trace_span, warn};
+use tracing::{debug, error, trace_span, warn};
 
 pub fn probe(card: &mut Card) -> Result<()> {
     let mut wbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Request buffer.
     let mut rbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Response buffer.
 
     println!("---------- IDENTIFYING CARD ----------");
-    let _cid = probe_cid(card, &mut wbuf, &mut rbuf)
+    let cid = probe_cid(card, &mut wbuf, &mut rbuf)
         .tap_err(|err| warn!("couldn't probe CID: {}", err))
         .ok();
     let atr = probe_atr(card, &mut rbuf)?;
@@ -19,7 +19,13 @@ pub fn probe(card: &mut Card) -> Result<()> {
     match get_atr_card_standard(&atr) {
         atr::Standard::FeliCa => {
             println!("--------------- FeliCa ---------------");
-            warn!("not yet implemented");
+            if let Some(cid) = cid {
+                probe_felica(card, &mut wbuf, &mut rbuf, &cid)
+                    .tap_err(|err| warn!("couldn't probe FeliCa: {}", err))
+                    .unwrap_or(());
+            } else {
+                error!("trying to probe FeliCa card, but we have no CID!");
+            }
         }
         _ => {
             println!("-------------- ISO 14443 -------------");
@@ -506,4 +512,21 @@ fn print_fci_issuer_discretionary_data(v: &emv::FCIIssuerDiscretionaryData) {
         println!(" ┃ ││╵");
     });
     println!(" ┃ │╵");
+}
+
+fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -> Result<()> {
+    use cardinal::felica::Command;
+
+    let idm = felica::cid_to_idm(cid)
+        .tap_err(|err| error!("CID is not a valid FeliCa IDm??? {}", err))?;
+    println!("┏╸{}", "FeliCa".italic());
+
+    // A physical FeliCa card can have multiple virtual cards, or Systems.
+    let sys_rsp = felica::RequestSystemCode { idm }.call(card, wbuf, rbuf)?;
+    for sys in sys_rsp.systems {
+        println!("┠─┬╴{:04X}╺╸{}", u16::from(sys), sys);
+        println!("┃ ╵");
+    }
+
+    Ok(())
 }
