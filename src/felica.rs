@@ -106,8 +106,7 @@ pub enum CommandCode {
 pub struct ReadWithoutEncryption {
     pub idm: u64,
     pub services: Vec<u16>,
-    // Blocklist encoding is an entire adventure I'm *not* getting into here.
-    pub blocks: Vec<u16>,
+    pub blocks: Vec<BlockListElement>,
 }
 
 impl<'a> Command<'a> for ReadWithoutEncryption {
@@ -124,7 +123,7 @@ impl<'a> Command<'a> for ReadWithoutEncryption {
         }
         wbuf.gwrite::<u8>(self.blocks.len() as u8, &mut offset)?;
         for bid in self.blocks.iter() {
-            wbuf.gwrite_with(bid, &mut offset, LE)?;
+            wbuf.gwrite(bid, &mut offset)?;
         }
         wbuf[0] = offset as u8;
         Ok(&wbuf[..offset])
@@ -196,6 +195,55 @@ impl<'a> Response<'a> for RequestSystemCodeResponse {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+#[repr(u8)]
+pub enum AccessMode {
+    Normal = 0,
+    Cashback = 1,
+    #[num_enum(catch_all)]
+    Unknown(u8),
+}
+
+/// A list of Block List Elements makes up a Block List. Block List Elements can have
+/// 2 or 3 byte lengths (indicated by their first byte), but this type smooths this over.
+///
+/// To save bytes, the Service Code is transmitted separately alongside the blocklist,
+/// and we reference them by indexes into that list. For example, a ReadWithoutEncryption
+/// command for service 8 -> blocks 10 and 12, and service 20 -> block 22 would say:
+///   services: [8, 20], blocks: [(0, 10), (0, 12), (1, 22)].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockListElement {
+    /// Access Mode. Always Normal unless you're doing Cashback to a Purse service.
+    pub mode: AccessMode,
+    /// Index in the service list sent alongside this blocklist, max 15 (0x0F).
+    pub service_idx: u8,
+    /// Block number (max 3 bytes).
+    pub block_num: u16,
+}
+
+impl scroll::ctx::TryIntoCtx<()> for &BlockListElement {
+    type Error = scroll::Error;
+
+    fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
+        let mut offset = 0;
+        wbuf.gwrite::<u8>(
+            // 0bX---_--- is 1 if self is 2 bytes (num fits in u8), else 0 for 3 (u16).
+            if self.block_num <= u8::MAX as u16 { 0b1000_0000 } else { 0b0000_0000}
+            // 0b-XXX_--- is the mode. Why this needs 3 bits is anyone's guess.
+            | (u8::from(self.mode) << 4)
+            // 0b----_XXXX is the service code index.
+            | (self.service_idx & 0b0000_1111),
+            &mut offset,
+        )?;
+        if self.block_num <= u8::MAX as u16 {
+            wbuf.gwrite::<u8>(self.block_num as u8, &mut offset)?;
+        } else {
+            wbuf.gwrite_with::<u16>(self.block_num, &mut offset, LE)?;
+        }
+        Ok(offset)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,7 +264,11 @@ mod tests {
         let apdu = ReadWithoutEncryption {
             idm: 0x01010601CB095703,
             services: vec![0x0109],
-            blocks: vec![0x80],
+            blocks: vec![BlockListElement {
+                mode: AccessMode::Normal,
+                service_idx: 0,
+                block_num: 0,
+            }],
         }
         .apdu(&mut wbuf)
         .unwrap();
@@ -224,6 +276,7 @@ mod tests {
             (apdu.cla, apdu.ins, apdu.p1, apdu.p2, apdu.le),
             (0xFF, 0x00, 0x00, 0x00, None)
         );
+        println!("{:02X?}", apdu.payload);
         assert_eq!(
             apdu.payload.expect("no payload"),
             &[
