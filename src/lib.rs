@@ -10,8 +10,11 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// The card returned a non-standard response code (not 0x90, 0x00).
-    #[error("error from card: SW1=0x{0:X} SW2=0x{1:X}")]
+    #[error("error from card: SW1=0x{0:02X} SW2=0x{1:02X}")]
     APDU(u8, u8),
+    // Same thing, but in a PCSC Transparent Session (eg. felica::Session).
+    #[error("error from card: XX=0x{0:02X} SW1=0x{1:02X} SW2=0x{2:02X}")]
+    APDUTransparent(u8, u8, u8),
 
     #[error("expected tag {expected:04X?}, got {actual:04X?}")]
     WrongTag { expected: Vec<u8>, actual: Vec<u8> },

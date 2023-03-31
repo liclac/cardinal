@@ -40,8 +40,9 @@ use crate::{util, Result};
 use nom::bytes::complete::take;
 use nom::number::complete::{be_u64, le_u8};
 use num_enum::{FromPrimitive, IntoPrimitive};
-use pcsc::Card;
+use scroll::ctx::TryIntoCtx;
 use scroll::{Pread, Pwrite, BE, LE};
+use tracing::{trace, trace_span};
 
 pub type IResult<'a, T> = nom::IResult<&'a [u8], T>;
 
@@ -51,33 +52,102 @@ pub fn cid_to_idm(cid: &[u8]) -> Result<u64> {
     Ok(cid.pread_with(0, BE)?)
 }
 
-pub trait Command<'a> {
+pub struct Session<'c> {
+    pub card: &'c mut pcsc::Card,
+}
+
+impl<'c> Session<'c> {
+    pub fn start(card: &'c mut pcsc::Card) -> Result<Self> {
+        let span = trace_span!("Session");
+        let _enter = span.enter();
+
+        let mut slf = Self { card };
+        trace!("Starting Transparent Session, enabling RF Field...");
+        slf.tcall(0x00, &[0x81, 0x00, 0x84, 0x00])?; // Start Transparent Session, Turn On RF Field
+        trace!("Switching Protocol to FeliCa...");
+        slf.tcall(0x02, &[0x8F, 0x02, 0x03, 0x00])?; // Switch Protocol: FeliCa, No Layering.
+        trace!("Setting TX/RX flags...");
+        slf.tcall(0x01, &[0x90, 0x02, 0x00, 0x00])?; // Set TX/RX flags.
+
+        Ok(slf)
+    }
+
+    pub fn end(&mut self) -> Result<()> {
+        let span = trace_span!("Session");
+        let _enter = span.enter();
+
+        trace!("Ending FeliCa Session...");
+        self.tcall(0x00, &[0x82, 0x00])?; // End Transparent Session
+        Ok(())
+    }
+
+    fn tcall(&mut self, p2: u8, payload: &[u8]) -> Result<()> {
+        let mut rbuf = [0u8; 16];
+        util::expect_pcsc_transparent_succ(util::call_apdu(
+            self.card,
+            &mut [0u8; 16],
+            &mut rbuf,
+            apdu::Command::new_with_payload(0xFF, 0xC2, 0x00, p2, payload),
+        )?)?;
+        Ok(())
+    }
+}
+
+impl<'c> Drop for Session<'c> {
+    fn drop(&mut self) {
+        self.end().expect("couldn't end FeliCa session on drop");
+    }
+}
+
+pub trait Command<'a>: Sized + TryIntoCtx
+where
+    <Self as TryIntoCtx>::Error: From<scroll::Error>,
+    crate::Error: From<<Self as TryIntoCtx>::Error>,
+{
     /// Associated command code.
     const CODE: CommandCode;
 
     /// Associated response code.
     type Response: Response<'a>;
 
-    /// Write the command (including length prefix!) to the buffer and return a slice of it.
-    fn write<'w>(&self, wbuf: &'w mut [u8]) -> Result<&'w [u8]>;
-
     /// Return an APDU wrapper.
-    fn apdu<'w>(&self, wbuf: &'w mut [u8]) -> Result<apdu::Command<'w>> {
-        let payload = self.write(wbuf)?;
-        debug_assert_eq!(payload[0] as usize, payload.len());
-        // Note: Although technically correct, setting an Le here will break the command.
+    fn apdu<'w>(self, wbuf: &'w mut [u8]) -> Result<apdu::Command<'w>> {
+        // We're in a PCSC Transparent Session, so we wrap commands in a BER-TLV blob.
+        wbuf.pwrite::<u8>(0x95, 0)?; // BER: Tag=0x95 Transceive Data Object.
+        wbuf.pwrite::<u8>(0x00, 1)?; // BER: Length placeholder.
+
+        // Write the command itself, then backfill length bytes.
+        let cmd_len = wbuf.pwrite(self, 3)?; // FeliCa: The command itself.
+        assert!(cmd_len <= 0b0111_1111); // Sanity check the length.
+        wbuf.pwrite::<u8>((cmd_len + 1) as u8, 1)?; // BER: Re-write length byte.
+        wbuf.pwrite::<u8>((cmd_len + 1) as u8, 2)?; // FeliCa: Command length, including self.
+
+        // PCSC Transparent Exchange pseudo-APDU, supported in semi-modern readers.
+        let payload = &wbuf[..cmd_len + 3];
+        {
+            let (rest, (tag, value)) = crate::ber::parse_next(payload).unwrap();
+            assert_eq!(rest, &[]);
+            println!("{:02X?} => {:02X?}", tag, value);
+        }
         Ok(apdu::Command::new_with_payload(
-            0xFF, 0x00, 0x00, 0x00, payload,
+            0xFF, 0xC2, 0x00, 0x01, payload,
         ))
     }
 
     /// Executes the command against the given card and returns the response.
-    fn call(&self, card: &mut Card, wbuf: &mut [u8], rbuf: &'a mut [u8]) -> Result<Self::Response> {
+    fn call(
+        self,
+        sess: &mut Session,
+        wbuf: &mut [u8],
+        rbuf: &'a mut [u8],
+    ) -> Result<Self::Response> {
         // TODO: This is a bit of a pointless extra step.
         let mut apdu_buf = [0u8; 256];
         let apdu = self.apdu(&mut apdu_buf[..])?;
 
-        Self::Response::parse(util::call_apdu(card, wbuf, rbuf, apdu)?)
+        Self::Response::parse(util::expect_pcsc_transparent_succ(util::call_apdu(
+            sess.card, wbuf, rbuf, apdu,
+        )?)?)
     }
 }
 
@@ -109,12 +179,16 @@ pub struct ReadWithoutEncryption {
     pub blocks: Vec<BlockListElement>,
 }
 
-impl<'a> Command<'a> for ReadWithoutEncryption {
+impl<'a> Command<'a> for &ReadWithoutEncryption {
     const CODE: CommandCode = CommandCode::ReadWithoutEncryption;
     type Response = ReadWithoutEncryptionResponse<'a>;
+}
 
-    fn write<'w>(&self, wbuf: &'w mut [u8]) -> Result<&'w [u8]> {
-        let mut offset = 1;
+impl TryIntoCtx for &ReadWithoutEncryption {
+    type Error = scroll::Error;
+
+    fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
+        let mut offset = 0;
         wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
         wbuf.gwrite_with(self.idm, &mut offset, BE)?;
         wbuf.gwrite::<u8>(self.services.len() as u8, &mut offset)?;
@@ -125,8 +199,7 @@ impl<'a> Command<'a> for ReadWithoutEncryption {
         for bid in self.blocks.iter() {
             wbuf.gwrite(bid, &mut offset)?;
         }
-        wbuf[0] = offset as u8;
-        Ok(&wbuf[..offset])
+        Ok(offset)
     }
 }
 
@@ -190,16 +263,19 @@ pub struct RequestSystemCode {
     pub idm: u64,
 }
 
-impl<'a> Command<'a> for RequestSystemCode {
+impl<'a> Command<'a> for &RequestSystemCode {
     const CODE: CommandCode = CommandCode::RequestSystemCode;
     type Response = RequestSystemCodeResponse;
+}
 
-    fn write<'w>(&self, wbuf: &'w mut [u8]) -> Result<&'w [u8]> {
-        let mut offset = 1;
+impl TryIntoCtx for &RequestSystemCode {
+    type Error = scroll::Error;
+
+    fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
+        let mut offset = 0;
         wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
         wbuf.gwrite_with(self.idm, &mut offset, BE)?;
-        wbuf[0] = offset as u8;
-        Ok(&wbuf[..offset])
+        Ok(offset)
     }
 }
 
@@ -307,14 +383,14 @@ mod tests {
         .unwrap();
         assert_eq!(
             (apdu.cla, apdu.ins, apdu.p1, apdu.p2, apdu.le),
-            (0xFF, 0x00, 0x00, 0x00, None)
+            (0xFF, 0xC2, 0x00, 0x01, None)
         );
         println!("{:02X?}", apdu.payload);
         assert_eq!(
             apdu.payload.expect("no payload"),
             &[
-                0x10, 0x06, 0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57, 0x03, 0x01, 0x09, 0x01, 0x01,
-                0x80, 0x00
+                0x95, 0x81, 16, 16, 0x06, 0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57, 0x03, 0x01,
+                0x09, 0x01, 0x01, 0x80, 0x00
             ],
         );
 
@@ -323,8 +399,8 @@ mod tests {
         assert_eq!(
             &apdu_buf[..apdu.len()],
             &[
-                0xFF, 0x00, 0x00, 0x00, 0x10, 0x10, 0x06, 0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57,
-                0x03, 0x01, 0x09, 0x01, 0x01, 0x80, 0x00
+                0xFF, 0xC2, 0x00, 0x01, 0x13, 0x95, 0x81, 0x10, 0x10, 0x06, 0x01, 0x01, 0x06, 0x01,
+                0xCB, 0x09, 0x57, 0x03, 0x01, 0x09, 0x01, 0x01, 0x80, 0x00
             ],
         );
     }
@@ -339,11 +415,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             (apdu.cla, apdu.ins, apdu.p1, apdu.p2, apdu.le),
-            (0xFF, 0x00, 0x00, 0x00, None)
+            (0xFF, 0xC2, 0x00, 0x01, None)
         );
+        println!("{:02X?}", apdu.payload);
         assert_eq!(
             apdu.payload.expect("no payload"),
-            &[10, 0x0C, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
+            &[0x95, 0x81, 10, 10, 0x0C, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
         );
     }
 

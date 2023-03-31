@@ -515,14 +515,18 @@ fn print_fci_issuer_discretionary_data(v: &emv::FCIIssuerDiscretionaryData) {
 }
 
 fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -> Result<()> {
-    use cardinal::felica::Command;
+    use felica::Command;
+    let span = trace_span!("felica");
+    let _enter = span.enter();
 
     let idm = felica::cid_to_idm(cid)
         .tap_err(|err| error!("CID is not a valid FeliCa IDm??? {}", err))?;
+
+    let mut sess = felica::Session::start(card)?;
     println!("┏╸{}", "FeliCa".italic());
 
     // A physical FeliCa card can have multiple virtual cards, or Systems.
-    let sys_rsp = felica::RequestSystemCode { idm }.call(card, wbuf, rbuf)?;
+    let sys_rsp = felica::RequestSystemCode { idm }.call(&mut sess, wbuf, rbuf)?;
     for sys in sys_rsp.systems {
         println!("┠─┬╴{:04X}╺╸{}", u16::from(sys), sys);
         println!("┃ ╵");
