@@ -37,7 +37,7 @@
 // Response: 0C 07 01 01 0A 10 8E 1B AD 39 01 A6
 
 use crate::{util, Result};
-use nom::bytes::complete::take;
+use nom::bytes::complete::{tag, take};
 use nom::number::complete::{be_u64, le_u8};
 use num_enum::{FromPrimitive, IntoPrimitive};
 use pcsc::Card;
@@ -104,6 +104,13 @@ pub trait Response<'a>: Sized {
     }
 }
 
+/// Helper to parse a standard response header (length, code, IDm) and return the IDm.
+fn parse_response_header(code: CommandCode, data: &[u8]) -> IResult<u64> {
+    let (data, _) = tag(&[data.len() as u8])(data)?;
+    let (data, _) = tag(&[code.into()])(data)?;
+    be_u64(data)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
 pub enum CommandCode {
@@ -148,11 +155,7 @@ impl<'a> Response<'a> for RequestResponseResponse {
     const CODE: CommandCode = CommandCode::RequestResponseResponse;
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
-        let (data, _) = le_u8(data)?; // Ignore length prefix.
-        let (data, code) = le_u8(data)?;
-        assert_eq!(Self::CODE, code.into());
-        let (data, idm) = be_u64(data)?;
-
+        let (data, idm) = parse_response_header(Self::CODE, data)?;
         let (data, mode) = le_u8(data)?;
         Ok((data, Self { idm, mode }))
     }
@@ -199,11 +202,12 @@ pub struct ReadWithoutEncryptionResponse<'a> {
 impl<'a> Response<'a> for ReadWithoutEncryptionResponse<'a> {
     const CODE: CommandCode = CommandCode::ReadWithoutEncryptionResponse;
 
-    fn iparse(rbuf: &'a [u8]) -> IResult<Self> {
+    fn iparse(data: &'a [u8]) -> IResult<Self> {
+        let (data, idm) = parse_response_header(Self::CODE, data)?;
         Ok((
-            rbuf,
+            data,
             Self {
-                idm: 0,
+                idm,
                 status: (0, 0),
                 blocks: vec![],
             },
@@ -296,11 +300,7 @@ impl<'a> Response<'a> for RequestSystemCodeResponse {
     const CODE: CommandCode = CommandCode::RequestSystemCodeResponse;
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
-        let (data, _) = le_u8(data)?; // Ignore length prefix.
-        let (data, code) = le_u8(data)?;
-        assert_eq!(Self::CODE, code.into());
-        let (data, idm) = be_u64(data)?;
-
+        let (data, idm) = parse_response_header(Self::CODE, data)?;
         let (data, num_systems) = le_u8(data)?;
         let (data, systems_data) = take(num_systems * 2)(data)?;
         let systems = systems_data
@@ -390,14 +390,14 @@ mod tests {
         .unwrap();
         assert_eq!(
             (apdu.cla, apdu.ins, apdu.p1, apdu.p2, apdu.le),
-            (0xFF, 0xC2, 0x00, 0x01, None)
+            (0xFF, 0x00, 0x00, 0x00, None)
         );
         println!("{:02X?}", apdu.payload);
         assert_eq!(
             apdu.payload.expect("no payload"),
             &[
-                0x95, 0x81, 16, 16, 0x06, 0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57, 0x03, 0x01,
-                0x09, 0x01, 0x01, 0x80, 0x00
+                16, 0x06, 0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57, 0x03, 0x01, 0x09, 0x01, 0x01,
+                0x80, 0x00
             ],
         );
 
@@ -406,8 +406,8 @@ mod tests {
         assert_eq!(
             &apdu_buf[..apdu.len()],
             &[
-                0xFF, 0xC2, 0x00, 0x01, 0x13, 0x95, 0x81, 0x10, 0x10, 0x06, 0x01, 0x01, 0x06, 0x01,
-                0xCB, 0x09, 0x57, 0x03, 0x01, 0x09, 0x01, 0x01, 0x80, 0x00
+                0xFF, 0x00, 0x00, 0x00, 16, 16, 0x06, 0x01, 0x01, 0x06, 0x01, 0xCB, 0x09, 0x57,
+                0x03, 0x01, 0x09, 0x01, 0x01, 0x80, 0x00
             ],
         );
     }
@@ -422,12 +422,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             (apdu.cla, apdu.ins, apdu.p1, apdu.p2, apdu.le),
-            (0xFF, 0xC2, 0x00, 0x01, None)
+            (0xFF, 0x00, 0x00, 0x00, None)
         );
         println!("{:02X?}", apdu.payload);
         assert_eq!(
             apdu.payload.expect("no payload"),
-            &[0x95, 0x81, 10, 10, 0x0C, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
+            &[10, 0x0C, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
         );
     }
 
@@ -441,7 +441,7 @@ mod tests {
             .unwrap(),
             RequestSystemCodeResponse {
                 idm: 0x01010A108E1BAD39,
-                systems: vec![SystemCode::Unknown(0x0003), SystemCode::FeliCaCommon],
+                systems: vec![SystemCode::Suica, SystemCode::FeliCaCommon],
             },
         )
     }
