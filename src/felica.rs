@@ -52,6 +52,16 @@ pub fn cid_to_idm(cid: &[u8]) -> Result<u64> {
     Ok(cid.pread_with(0, BE)?)
 }
 
+/// Returns the IDm for Service number N on the card identified by IDm0,
+/// eg. 0 for the default service, 1 for the next, etc.
+pub fn idm_for_service(idm0: u64, n: u8) -> u64 {
+    assert!(n < 0b0000_1111); // We can't stuff IDs larger than 4 bits into the IDm.
+
+    let mut idm_bytes = idm0.to_be_bytes();
+    idm_bytes[0] = (idm_bytes[0] & 0b0000_1111) | ((n as u8) << 4);
+    u64::from_be_bytes(idm_bytes)
+}
+
 pub trait Command<'a>: Sized + TryIntoCtx
 where
     <Self as TryIntoCtx>::Error: From<scroll::Error>,
@@ -97,12 +107,55 @@ pub trait Response<'a>: Sized {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
 pub enum CommandCode {
+    RequestResponse = 0x04,
+    RequestResponseResponse = 0x05, // yo dawg
     ReadWithoutEncryption = 0x06,
     ReadWithoutEncryptionResponse = 0x07,
     RequestSystemCode = 0x0C,
     RequestSystemCodeResponse = 0x0D,
     #[num_enum(catch_all)]
     Unknown(u8),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RequestResponse {
+    pub idm: u64,
+}
+
+impl<'a> Command<'a> for &RequestResponse {
+    const CODE: CommandCode = CommandCode::RequestResponse;
+    type Response = RequestResponseResponse;
+}
+
+impl TryIntoCtx for &RequestResponse {
+    type Error = scroll::Error;
+
+    fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
+        let mut offset = 0;
+        wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
+        wbuf.gwrite_with(self.idm, &mut offset, BE)?;
+        Ok(offset)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RequestResponseResponse {
+    pub idm: u64,
+    pub mode: u8,
+}
+
+impl<'a> Response<'a> for RequestResponseResponse {
+    const CODE: CommandCode = CommandCode::RequestResponseResponse;
+
+    fn iparse(data: &'a [u8]) -> IResult<Self> {
+        let (data, _) = le_u8(data)?; // Ignore length prefix.
+        let (data, code) = le_u8(data)?;
+        assert_eq!(Self::CODE, code.into());
+        let (data, idm) = be_u64(data)?;
+
+        let (data, mode) = le_u8(data)?;
+        Ok((data, Self { idm, mode }))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -528,17 +528,46 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
 
     let span = trace_span!("felica");
     let _enter = span.enter();
-
-    let idm = felica::cid_to_idm(cid)
-        .tap_err(|err| error!("CID is not a valid FeliCa IDm??? {}", err))?;
-
     println!("┏╸{}", "FeliCa".italic());
 
+    // Hm, the lower 2 bytes of the IDm are the Manufacturer Code, can we decode that?
+    let idm0 = felica::cid_to_idm(cid)
+        .tap_err(|err| error!(?err, "CID is not a valid IDm?? this should be impossible??"))?;
+    println!("┠╴IDm: {:016X}", idm0);
+
+    // The PMm is a whole thing we can definitely decode.
+    pcsc_get_data(card, wbuf, rbuf, 0x01)
+        .tap_err(|err| warn!(?err, "Couldn't query PMm? (Not important.)"))
+        .tap_ok(|v| println!("┠╴PMm: {}", hex::encode_upper(v)))?;
+
     // A physical FeliCa card can have multiple virtual cards, or Systems.
-    let sys_rsp = felica::RequestSystemCode { idm }.call(card, wbuf, rbuf)?;
-    for sys in sys_rsp.systems {
-        println!("┠─┬╴{:04X}╺╸{}", u16::from(sys), sys);
-        println!("┃ ╵");
+    println!("┃");
+    debug!("Listing services...");
+    let sys_rsp = felica::RequestSystemCode { idm: idm0 }.call(card, wbuf, rbuf)?;
+    for (i, sys) in sys_rsp.systems.iter().copied().enumerate() {
+        assert!(i < 0b0000_1111); // We can't stuff IDs larger than 4 bits into the IDm.
+        if i == 0 {
+            print!("┗┳");
+        } else {
+            print!(" ┣");
+        }
+        println!("┯╸{} {:04X}╺╸{}", "System".italic(), u16::from(sys), sys);
+
+        let idm = felica::idm_for_service(idm0, i as u8);
+        println!(" ┃└┬╴IDm: {:016X}", idm);
+
+        // This should always return Mode 0, but it's a good test command.
+        debug!(system = i, "Pinging card...");
+        let _ = felica::RequestResponse { idm }
+            .call(card, wbuf, rbuf)
+            .tap_err(|err| warn!(?err, "Couldn't ping card (RequestResponse)"))
+            .tap_ok(|rsp| {
+                if rsp.mode != 0 {
+                    warn!(mode = rsp.mode, "Expected card to be in Mode 0")
+                }
+            });
+
+        println!(" ┃ ╵");
     }
 
     Ok(())
