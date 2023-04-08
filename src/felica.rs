@@ -36,14 +36,13 @@
 //
 // Response: 0C 07 01 01 0A 10 8E 1B AD 39 01 A6
 
-use crate::{ber, util, Result};
+use crate::{util, Result};
 use nom::bytes::complete::take;
-use nom::combinator::cond;
-use nom::number::complete::{be_u16, be_u64, le_u8};
+use nom::number::complete::{be_u64, le_u8};
 use num_enum::{FromPrimitive, IntoPrimitive};
+use pcsc::Card;
 use scroll::ctx::TryIntoCtx;
 use scroll::{Pread, Pwrite, BE, LE};
-use tracing::{trace, trace_span};
 
 pub type IResult<'a, T> = nom::IResult<&'a [u8], T>;
 
@@ -51,53 +50,6 @@ pub type IResult<'a, T> = nom::IResult<&'a [u8], T>;
 /// In other words, casts an 8-byte &[u8] into an u64.
 pub fn cid_to_idm(cid: &[u8]) -> Result<u64> {
     Ok(cid.pread_with(0, BE)?)
-}
-
-pub struct Session<'c> {
-    pub card: &'c mut pcsc::Card,
-}
-
-impl<'c> Session<'c> {
-    pub fn start(card: &'c mut pcsc::Card) -> Result<Self> {
-        let span = trace_span!("Session");
-        let _enter = span.enter();
-
-        let mut slf = Self { card };
-        trace!("Starting Transparent Session...");
-        slf.tcall(0x00, &[0x81, 0x00, 0x84, 0x00])?; // Start Transparent Session, Turn On RF Field
-        trace!("Switching Protocol to FeliCa...");
-        slf.tcall(0x02, &[0x8F, 0x02, 0x03, 0x00])?; // Switch Protocol: FeliCa, No Layering.
-        trace!("Setting TX/RX flags...");
-        slf.tcall(0x01, &[0x90, 0x02, 0x00, 0x00])?; // Set TX/RX flags.
-
-        Ok(slf)
-    }
-
-    pub fn end(&mut self) -> Result<()> {
-        let span = trace_span!("Session");
-        let _enter = span.enter();
-
-        trace!("Ending FeliCa Session...");
-        self.tcall(0x00, &[0x82, 0x00])?; // End Transparent Session
-        Ok(())
-    }
-
-    fn tcall(&mut self, p2: u8, payload: &[u8]) -> Result<()> {
-        let mut rbuf = [0u8; 16];
-        util::expect_pcsc_transparent_succ(util::call_apdu(
-            self.card,
-            &mut [0u8; 16],
-            &mut rbuf,
-            apdu::Command::new_with_payload(0xFF, 0xC2, 0x00, p2, payload),
-        )?)?;
-        Ok(())
-    }
-}
-
-impl<'c> Drop for Session<'c> {
-    fn drop(&mut self) {
-        self.end().expect("couldn't end FeliCa session on drop");
-    }
 }
 
 pub trait Command<'a>: Sized + TryIntoCtx
@@ -113,49 +65,23 @@ where
 
     /// Return an APDU wrapper.
     fn apdu<'w>(self, wbuf: &'w mut [u8]) -> Result<apdu::Command<'w>> {
-        // We're in a PCSC Transparent Session, so we wrap commands in a BER-TLV blob.
-        let mut offset = 0;
-
-        // Set a timer to give the card some time to reply.
-        wbuf.gwrite::<&[u8]>(&[0x5F, 0x46, 4, 0x40, 0x42, 0x0F, 0x00], &mut offset)?;
-
-        // Wrap the APDU itself in a 0x95 Transceive data object.
-        wbuf.pwrite::<u8>(0x95, offset)?; // BER: Tag=0x95 Transceive Data Object.
-        wbuf.pwrite::<u8>(0x00, offset + 1)?; // BER: Length placeholder.
-
-        // Write the command itself, then backfill length bytes.
-        let cmd_len = wbuf.pwrite(self, offset + 3)?; // FeliCa: The command itself.
+        // 1 byte length, followed by the command itself.
+        let cmd_len = wbuf.pwrite(self, 1)?; // Write the command.
         assert!(cmd_len <= 0b0111_1111); // Sanity check the length.
-        wbuf.pwrite::<u8>((cmd_len + 1) as u8, offset + 1)?; // BER: Re-write length byte.
-        wbuf.pwrite::<u8>((cmd_len + 1) as u8, offset + 2)?; // FeliCa: Command length, including self.
+        wbuf.pwrite::<u8>((cmd_len + 1) as u8, 0)?; // Go back and add the length byte.
 
-        // PCSC Transparent Exchange pseudo-APDU, supported in semi-modern readers.
-        let payload = &wbuf[..cmd_len + 3];
-        {
-            let (rest, (tag, value)) = crate::ber::parse_next(payload).unwrap();
-            println!("{:02X?} => {:02X?}", tag, value);
-            assert_eq!(rest, &[]);
-        }
-        // FFC200010E [5F46 04 40420F00] [95 05 80B2000008]
-        Ok(apdu::Command::new_with_payload(
-            0xFF, 0xC2, 0x00, 0x01, payload,
-        ))
+        // Wrap in a PCSC pseudo-APDU that sends it straight through to the card.
+        let pl = &wbuf[..cmd_len + 1];
+        Ok(apdu::Command::new_with_payload(0xFF, 0x00, 0x00, 0x00, pl))
     }
 
     /// Executes the command against the given card and returns the response.
-    fn call(
-        self,
-        sess: &mut Session,
-        wbuf: &mut [u8],
-        rbuf: &'a mut [u8],
-    ) -> Result<Self::Response> {
+    fn call(self, card: &mut Card, wbuf: &mut [u8], rbuf: &'a mut [u8]) -> Result<Self::Response> {
         // TODO: This is a bit of a pointless extra step.
         let mut apdu_buf = [0u8; 256];
         let apdu = self.apdu(&mut apdu_buf[..])?;
 
-        Self::Response::parse(util::expect_pcsc_transparent_succ(util::call_apdu(
-            sess.card, wbuf, rbuf, apdu,
-        )?)?)
+        Self::Response::parse(util::call_apdu(card, wbuf, rbuf, apdu)?)
     }
 }
 
@@ -171,144 +97,12 @@ pub trait Response<'a>: Sized {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
 pub enum CommandCode {
-    Polling = 0x00,
-    PollingResponse = 0x01,
     ReadWithoutEncryption = 0x06,
     ReadWithoutEncryptionResponse = 0x07,
     RequestSystemCode = 0x0C,
     RequestSystemCodeResponse = 0x0D,
     #[num_enum(catch_all)]
     Unknown(u8),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
-#[repr(u8)]
-pub enum PollingRequest {
-    /// No additional data is returned.
-    NoRequest = 0x00,
-    /// System Code of the logical card is returned.
-    System = 0x01,
-    /// Communication performance is returned.
-    Performance = 0x02,
-    /// Non-standard request code. Some card support these.
-    #[num_enum(catch_all)]
-    RFU(u8) = 0xFF,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
-#[repr(u8)]
-pub enum PollingTimeSlots {
-    /// Timeslot 0.
-    T1 = 0x00,
-    /// Timeslot 0-1.
-    T2 = 0x01,
-    /// Timeslot 0-3.
-    T4 = 0x03,
-    /// Timeslot 0-7.
-    T8 = 0x07,
-    /// Timeslot 0-15.
-    T16 = 0x0F,
-    /// Invalid number of time slots.
-    #[num_enum(catch_all)]
-    Invalid(u8) = 0xFF,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Polling {
-    /// System code to poll. Either byte (or both) may be 0xFF for a wildcard.
-    pub system: u16,
-    /// Type of data to be polled for.
-    pub request: PollingRequest,
-    /// Number of time slots available for responses.
-    pub time_slots: PollingTimeSlots,
-}
-
-impl<'a> Command<'a> for &Polling {
-    const CODE: CommandCode = CommandCode::Polling;
-    type Response = PollingResponse;
-
-    // Polling commands are special!
-    //
-    // In FeliCa technology, the start time of the first time slot is known as "Response time (A)",
-    // and the width (i.e., duration) of the time slot is known as "Response time (B)". These
-    // response times are defined as follows:
-    //
-    // - Response time (A) 512 x 64 / fc (approximately 2.417 ms)
-    // - Response time (B) 256 x 64 / fc (approximately 1.208 ms)
-    //
-    // The number of time slots (i.e., "n") to be shared between the Reader/Writer and the card is
-    // specified by the Polling command. For details, see section 4.4.2 "Polling".
-    fn apdu<'w>(self, wbuf: &'w mut [u8]) -> Result<apdu::Command<'w>> {
-        // We're in a PCSC Transparent Session, so we wrap commands in a BER-TLV blob.
-        let mut offset = 0;
-
-        // Transmit the Polling command.
-        wbuf.pwrite::<u8>(0x93, offset)?; // BER: Tag=0x93 Transmit.
-        wbuf.pwrite::<u8>(0x00, offset + 1)?; // BER: Length placeholder.
-        let cmd_len = wbuf.pwrite(self, offset + 3)?; // FeliCa: The command itself.
-        assert!(cmd_len <= 0b0111_1111); // Sanity check the length.
-        wbuf.pwrite::<u8>((cmd_len + 1) as u8, offset + 1)?; // BER: Backfill length byte.
-        wbuf.pwrite::<u8>((cmd_len + 1) as u8, offset + 2)?; // FeliCa: Backfill length byte.
-        offset = offset + 3 + cmd_len;
-        println!("POLL0: {:02X?}", &wbuf[..offset]);
-
-        // Wait 2.417ms before the first timeslot.
-        wbuf.gwrite(ber::TV(&[0x5F, 0x46], &2417u32.to_le_bytes()), &mut offset)?;
-        wbuf.gwrite(ber::TV(&[0x94], &[]), &mut offset)?; // Receive.
-        println!("POLL1: {:02X?}", &wbuf[..offset]);
-
-        // Wait 1.208ms before each successive timeslot.
-        for _ in 0..(u8::from(self.time_slots)) {
-            wbuf.gwrite(ber::TV(&[0x5F, 0x46], &1208u32.to_le_bytes()), &mut offset)?;
-            wbuf.gwrite(ber::TV(&[0x94], &[]), &mut offset)?; // Receive.
-            println!("POLLn: {:02X?}", &wbuf[..offset]);
-        }
-
-        // PCSC Transparent Exchange pseudo-APDU, supported in semi-modern readers.
-        let payload = &wbuf[..offset];
-        {
-            let mut rest = payload;
-            while rest.len() > 0 {
-                let (rest_, (tag, value)) = crate::ber::parse_next(rest).unwrap();
-                rest = rest_;
-                println!("POLLx: {:02X?} => {:02X?}", tag, value);
-            }
-        }
-        Ok(apdu::Command::new_with_payload(
-            0xFF, 0xC2, 0x00, 0x01, payload,
-        ))
-    }
-}
-
-impl TryIntoCtx for &Polling {
-    type Error = scroll::Error;
-
-    fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
-        let mut offset = 0;
-        wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
-        wbuf.gwrite_with::<u16>(self.system, &mut offset, BE)?;
-        wbuf.gwrite::<u8>(self.request.into(), &mut offset)?;
-        wbuf.gwrite::<u8>(self.time_slots.into(), &mut offset)?;
-        Ok(offset)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct PollingResponse {
-    pub idm: u64,
-    pub pmm: u64,
-    pub data: Option<u16>,
-}
-
-impl<'a> Response<'a> for PollingResponse {
-    const CODE: CommandCode = CommandCode::PollingResponse;
-
-    fn iparse(rest: &'a [u8]) -> IResult<Self> {
-        let (rest, idm) = be_u64(rest)?;
-        let (rest, pmm) = be_u64(rest)?;
-        let (rest, data) = cond(rest.len() > 0, be_u16)(rest)?;
-        Ok((rest, Self { idm, pmm, data }))
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

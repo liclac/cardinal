@@ -38,14 +38,23 @@ pub fn probe(card: &mut Card) -> Result<()> {
     Ok(())
 }
 
+fn pcsc_get_data<'r>(
+    card: &mut Card,
+    wbuf: &mut [u8],
+    rbuf: &'r mut [u8],
+    p1: u8,
+) -> Result<&'r [u8]> {
+    // PCSC pseudo-APDU, doesn't actually talk to the card.
+    Ok(util::call_le(card, wbuf, rbuf, 0xFF, 0xCA, p1, 0x00, 0)?)
+}
+
 /// Probes the ISO 14443-4 card ID. Only for contactless cards.
 /// TODO: This shouldn't print a warning when using a contact reader.
 fn probe_cid(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8]) -> Result<Vec<u8>> {
     let span = trace_span!("probe_cid");
     let _enter = span.enter();
 
-    // PCSC pseudo-APDU, doesn't actually talk to the card.
-    let cid = util::call_le(card, wbuf, rbuf, 0xFF, 0xCA, 0x00, 0x00, 0)
+    let cid = pcsc_get_data(card, wbuf, rbuf, 0x00)
         .context("couldn't query CID")
         .map(|v| v.to_owned())?;
     println!("Card ID: {}", hex::encode_upper(&cid));
@@ -520,28 +529,17 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
     let span = trace_span!("felica");
     let _enter = span.enter();
 
-    //let idm = felica::cid_to_idm(cid)
-    //    .tap_err(|err| error!("CID is not a valid FeliCa IDm??? {}", err))?;
+    let idm = felica::cid_to_idm(cid)
+        .tap_err(|err| error!("CID is not a valid FeliCa IDm??? {}", err))?;
 
-    let mut sess = felica::Session::start(card)?;
     println!("┏╸{}", "FeliCa".italic());
 
-    // HACK: Scan for cards. Note that most physical FeliCa cards are actually multiple
-    // virtual cards (Systems) in a trenchcoat, so this almost always gets 2+ hits.
-    let poll_rsp = (felica::Polling {
-        system: 0xFFFF,
-        request: felica::PollingRequest::System,
-        time_slots: felica::PollingTimeSlots::T16,
-    })
-    .call(&mut sess, wbuf, rbuf)?;
-    println!("{:#02X?}", poll_rsp);
-
     // A physical FeliCa card can have multiple virtual cards, or Systems.
-    //let sys_rsp = felica::RequestSystemCode { idm }.call(&mut sess, wbuf, rbuf)?;
-    //for sys in sys_rsp.systems {
-    //    println!("┠─┬╴{:04X}╺╸{}", u16::from(sys), sys);
-    //    println!("┃ ╵");
-    //}
+    let sys_rsp = felica::RequestSystemCode { idm }.call(card, wbuf, rbuf)?;
+    for sys in sys_rsp.systems {
+        println!("┠─┬╴{:04X}╺╸{}", u16::from(sys), sys);
+        println!("┃ ╵");
+    }
 
     Ok(())
 }

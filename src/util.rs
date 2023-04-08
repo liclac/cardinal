@@ -44,19 +44,6 @@ pub fn call_apdu<'w, 'r>(
     }
 }
 
-pub(crate) fn expect_pcsc_transparent_succ(rsp: &[u8]) -> Result<&[u8]> {
-    let (rest, (tag, value)) = crate::ber::parse_next(rsp)?;
-    expect_tag(&[0xC0], tag)?;
-    if value != &[0x00, 0x90, 0x00] {
-        Err(crate::Error::PCSCTransparent(
-            value[0],
-            u16::from_be_bytes([value[1], value[2]]).into(),
-        ))
-    } else {
-        Ok(rest)
-    }
-}
-
 pub(crate) fn expect_tag<'a>(expected: &'a [u8], actual: &'a [u8]) -> Result<&'a [u8]> {
     if expected == actual {
         Ok(expected)
