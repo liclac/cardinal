@@ -290,9 +290,9 @@ impl scroll::ctx::TryIntoCtx<()> for &BlockListElement {
     fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
         let mut offset = 0;
         wbuf.gwrite::<u8>(
-            // 0bX---_--- is 1 if self is 2 bytes (num fits in u8), else 0 for 3 (u16).
+            // 0bX---_---- is 1 if self is 2 bytes (num fits in u8), else 0 for 3 (u16).
             if self.block_num <= u8::MAX as u16 { 0b1000_0000 } else { 0b0000_0000}
-            // 0b-XXX_--- is the mode. Why this needs 3 bits is anyone's guess.
+            // 0b-XXX_---- is the mode. Why this needs 3 bits is anyone's guess.
             | (u8::from(self.mode) << 4)
             // 0b----_XXXX is the service code index.
             | (self.service_idx & 0b0000_1111),
