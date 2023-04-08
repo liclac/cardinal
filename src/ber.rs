@@ -16,6 +16,7 @@
 use byteorder::{BigEndian, ByteOrder};
 use nom::bytes::complete::take;
 use nom::number::complete::be_u8;
+use scroll::Pwrite;
 
 pub type IResult<'a, T> = nom::IResult<&'a [u8], T>;
 
@@ -129,9 +130,38 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
+pub struct TV<'a>(pub &'a [u8], pub &'a [u8]);
+
+impl<'a> scroll::ctx::TryIntoCtx<()> for TV<'a> {
+    type Error = scroll::Error;
+
+    fn try_into_ctx(self, buf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
+        let mut offset = 0;
+        buf.gwrite(self.0, &mut offset)?;
+        let len = self.1.len();
+        if len <= 0b0111_1111 {
+            buf.gwrite::<u8>(len as u8, &mut offset)?;
+        } else {
+            let lenlen: usize = if len <= u8::MAX as usize {
+                buf.pwrite::<u8>(len as u8, offset + 1)?
+            } else if len <= u16::MAX as usize {
+                buf.pwrite::<u16>(len as u16, offset + 1)?
+            } else if len <= u32::MAX as usize {
+                buf.pwrite::<u32>(len as u32, offset + 1)?
+            } else {
+                buf.pwrite::<u64>(len as u64, offset + 1)?
+            };
+            buf.pwrite::<u8>(0b1000_0000 | (lenlen as u8), offset)?;
+        }
+        buf.gwrite(self.1, &mut offset)?;
+        Ok(offset)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use scroll::Pwrite;
 
     #[test]
     fn test_tag_to_u32() {
@@ -515,5 +545,12 @@ mod tests {
 
         assert_eq!(it.next().is_none(), true);
         assert_eq!(it.next().is_none(), true);
+    }
+
+    #[test]
+    fn test_tv_write_empty() {
+        let mut buf = [0u8; 16];
+        let offset = buf.pwrite(TV(&[0x6F], &[]), 0).unwrap();
+        assert_eq!(&buf[..offset], &[0x6F, 0x00]);
     }
 }
