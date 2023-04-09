@@ -38,7 +38,8 @@
 
 use crate::{util, Result};
 use nom::bytes::complete::{tag, take};
-use nom::number::complete::{be_u64, le_u8};
+use nom::combinator::map;
+use nom::number::complete::{be_u64, le_u16, le_u8};
 use num_enum::{FromPrimitive, IntoPrimitive};
 use pcsc::Card;
 use scroll::ctx::TryIntoCtx;
@@ -258,17 +259,88 @@ impl std::fmt::Display for SystemCode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServiceCode {
+    pub code: u16,   // Full code.
+    pub number: u16, // 10 bits.
+    pub attrs: u8,   // 6 bits.
+}
+
+impl From<u16> for ServiceCode {
+    fn from(v: u16) -> Self {
+        Self {
+            code: v,
+            number: v >> 6,
+            attrs: (v as u8) & 0x3F,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
 pub enum CommandCode {
+    RequestService = 0x02,
+    RequestServiceResponse = 0x03,
     RequestResponse = 0x04,
     RequestResponseResponse = 0x05, // yo dawg
     ReadWithoutEncryption = 0x06,
     ReadWithoutEncryptionResponse = 0x07,
+    SearchServiceCode = 0x0A,
+    SearchServiceCodeResponse = 0x0B,
     RequestSystemCode = 0x0C,
     RequestSystemCodeResponse = 0x0D,
     #[num_enum(catch_all)]
     Unknown(u8),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RequestService {
+    pub idm: u64,
+    pub node_codes: Vec<u16>, // max 32!
+}
+
+impl<'a> Command<'a> for &RequestService {
+    const CODE: CommandCode = CommandCode::RequestService;
+    type Response = RequestServiceResponse;
+}
+
+impl TryIntoCtx for &RequestService {
+    type Error = scroll::Error;
+
+    fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
+        assert!(self.node_codes.len() <= 32); // Split larger lists into multiple requests.
+
+        let mut offset = 0;
+        wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
+        wbuf.gwrite_with(self.idm, &mut offset, BE)?;
+        wbuf.gwrite::<u8>(self.node_codes.len() as u8, &mut offset)?;
+        for code in &self.node_codes {
+            wbuf.gwrite_with::<u16>(*code, &mut offset, LE)?;
+        }
+        Ok(offset)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RequestServiceResponse {
+    pub idm: u64,
+    pub key_versions: Vec<u16>,
+}
+
+impl<'a> Response<'a> for RequestServiceResponse {
+    const CODE: CommandCode = CommandCode::RequestServiceResponse;
+
+    fn iparse(data: &'a [u8]) -> IResult<Self> {
+        let (data, idm) = parse_response_header(Self::CODE, data)?;
+        let (data, num) = le_u8(data)?;
+        let (mut data, mut key_versions) = (data, vec![]);
+        for _ in 0..num {
+            let (data_, ver) = le_u16(data)?;
+            data = data_;
+            key_versions.push(ver);
+        }
+        Ok((data, Self { idm, key_versions }))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -362,7 +434,63 @@ impl<'a> Response<'a> for ReadWithoutEncryptionResponse<'a> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct SearchServiceCode {
+    pub idm: u64,
+    pub idx: u16,
+}
 
+impl<'a> Command<'a> for &SearchServiceCode {
+    const CODE: CommandCode = CommandCode::SearchServiceCode;
+    type Response = SearchServiceCodeResponse;
+}
+
+impl TryIntoCtx for &SearchServiceCode {
+    type Error = scroll::Error;
+
+    fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
+        let mut offset = 0;
+        wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
+        wbuf.gwrite_with(self.idm, &mut offset, BE)?;
+        wbuf.gwrite_with(self.idx, &mut offset, LE)?;
+        Ok(offset)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchServiceCodeResult {
+    Area { code: u16, max_service: u16 },
+    Service { code: ServiceCode },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SearchServiceCodeResponse {
+    pub idm: u64,
+    pub result: Option<SearchServiceCodeResult>,
+}
+
+impl<'a> Response<'a> for SearchServiceCodeResponse {
+    const CODE: CommandCode = CommandCode::SearchServiceCodeResponse;
+
+    fn iparse(data: &'a [u8]) -> IResult<Self> {
+        let (data, idm) = parse_response_header(Self::CODE, data)?;
+        let (data, result) = if data.len() == 2 {
+            map(le_u16, |code| {
+                if code == 0xFFFF {
+                    None
+                } else {
+                    Some(SearchServiceCodeResult::Service { code: code.into() })
+                }
+            })(data)?
+        } else {
+            let (data, code) = le_u16(data)?;
+            let (data, max_service) = le_u16(data)?;
+            let result = SearchServiceCodeResult::Area { code, max_service };
+            (data, Some(result))
+        };
+        Ok((data, Self { idm, result }))
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct RequestSystemCode {

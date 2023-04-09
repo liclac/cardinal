@@ -571,6 +571,17 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                 }
             });
 
+        let mut idx = 0;
+        loop {
+            let rsp = felica::SearchServiceCode { idm, idx }.call(card, wbuf, rbuf)?;
+            idx += 1;
+            if let Some(result) = rsp.result {
+                println!("[{:02}] => {:04X?}", idx, result);
+            } else {
+                break;
+            }
+        }
+
         println!(" ┃ ╵");
     }
 
