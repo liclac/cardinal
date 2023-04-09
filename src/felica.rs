@@ -284,7 +284,7 @@ pub enum ServiceAccess {
     ReadWrite,
     ReadOnly,
     PurseDirect,
-    PurseCashbackDecrement,
+    PurseCashback,
     PurseDecrement,
 }
 
@@ -295,7 +295,7 @@ impl std::fmt::Display for ServiceAccess {
             Self::ReadWrite => write!(f, "Read/Write"),
             Self::ReadOnly => write!(f, "Read"),
             Self::PurseDirect => write!(f, "Direct"),
-            Self::PurseCashbackDecrement => write!(f, "Cashback/Decrement"),
+            Self::PurseCashback => write!(f, "Cashback"),
             Self::PurseDecrement => write!(f, "Decrement"),
         }
     }
@@ -307,13 +307,13 @@ pub struct ServiceCode {
     pub number: u16, // 10 bits.
     pub kind: ServiceKind,
     pub access: ServiceAccess,
-    pub auth_req: bool, // Authentication required?
+    pub is_authenticated: bool, // Authentication required?
 }
 
 impl From<u16> for ServiceCode {
     fn from(v: u16) -> Self {
         let attrs = (v as u8) & 0x3F;
-        let (kind, access, auth_req) = match attrs & 0b00_111111 {
+        let (kind, access, is_authenticated) = match attrs & 0b00_111111 {
             0b00_001000 => (ServiceKind::Random, ServiceAccess::ReadWrite, true),
             0b00_001001 => (ServiceKind::Random, ServiceAccess::ReadWrite, false),
             0b00_001010 => (ServiceKind::Random, ServiceAccess::ReadOnly, true),
@@ -324,16 +324,8 @@ impl From<u16> for ServiceCode {
             0b00_001111 => (ServiceKind::Cyclic, ServiceAccess::ReadOnly, false),
             0b00_010000 => (ServiceKind::Purse, ServiceAccess::PurseDirect, true),
             0b00_010001 => (ServiceKind::Purse, ServiceAccess::PurseDirect, false),
-            0b00_010010 => (
-                ServiceKind::Purse,
-                ServiceAccess::PurseCashbackDecrement,
-                true,
-            ),
-            0b00_010011 => (
-                ServiceKind::Purse,
-                ServiceAccess::PurseCashbackDecrement,
-                false,
-            ),
+            0b00_010010 => (ServiceKind::Purse, ServiceAccess::PurseCashback, true),
+            0b00_010011 => (ServiceKind::Purse, ServiceAccess::PurseCashback, false),
             0b00_010100 => (ServiceKind::Purse, ServiceAccess::PurseDecrement, true),
             0b00_010101 => (ServiceKind::Purse, ServiceAccess::PurseDecrement, false),
             0b00_010110 => (ServiceKind::Purse, ServiceAccess::ReadOnly, true),
@@ -345,7 +337,7 @@ impl From<u16> for ServiceCode {
             number: v >> 6,
             kind,
             access,
-            auth_req,
+            is_authenticated,
         }
     }
 }

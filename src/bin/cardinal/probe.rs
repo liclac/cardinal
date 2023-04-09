@@ -589,14 +589,36 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                     println!("");
                 }
                 Some(felica::SearchServiceCodeResult::Service(code)) => {
-                    print!(
-                        " ┃ ├─╴{:04X}╶╴Service: {}╶╴{}",
-                        code.number, code.kind, code.access
+                    println!(
+                        " ┃ ├{}╴{:04X}╶╴Service: {:6}╶╴{}{}",
+                        if code.is_authenticated { "─" } else { "┬" },
+                        code.number,
+                        code.kind,
+                        code.access,
+                        if code.is_authenticated {
+                            "╶╴locked"
+                        } else {
+                            ""
+                        }
+                        .italic()
                     );
-                    if code.auth_req {
-                        print!("╶╴authenticated");
+                    if !code.is_authenticated {
+                        match code.kind {
+                            felica::ServiceKind::Random => {
+                                println!(" ┃ │└─╴[TODO: random access]");
+                            }
+                            felica::ServiceKind::Cyclic => {
+                                println!(" ┃ │└─╴[TODO: cyclic access]");
+                            }
+                            felica::ServiceKind::Purse => {
+                                println!(" ┃ │└─╴[TODO: purse access]");
+                            }
+                            felica::ServiceKind::Invalid => {
+                                println!(" ┃ │└─╴[INVALID SERVICE TYPE]");
+                            }
+                        }
+                        println!(" ┃ │");
                     }
-                    println!("");
                 }
                 None => break,
             }
