@@ -112,6 +112,60 @@ fn parse_response_header(code: CommandCode, data: &[u8]) -> IResult<u64> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+#[repr(u16)]
+pub enum SystemCode {
+    /// Suica (JR East). Also on many compatible cards, eg. Pasmo, ICOCA.
+    Suica = 0x0003,
+    /// Sytem that uses regular NFC NDEF.
+    NDEF = 0x12FC,
+    /// Host-based Emulation for NFC-F (HCE-F).
+    HostEmulation = 0x4000,
+    /// Octopus (Hong Kong).
+    Octopus = 0x8008,
+    /// IruCa (Takamatsu-Kotohira Electric Railroad).
+    IruCa = 0x80DE,
+    /// PASPY (Hiroshima).
+    PASPY = 0x8592,
+    /// SAPICA (Sapporo).
+    SAPICA = 0x865E,
+    /// OKICA (Okinawa).
+    OKICA = 0x8FC1,
+    /// Ryuto (Niigata).
+    Ryuto = 0x8B5D,
+    /// FeliCa Lite-S
+    FeliCaLiteS = 0x88B4,
+    /// FeliCa Secure ID
+    FeliCaSecureID = 0x957A,
+    /// FeliCa Networks "Common Area".
+    FeliCaCommon = 0xFE00,
+    /// FeliCa Plug
+    FeliCaPlug = 0xFEE1,
+    #[num_enum(catch_all)]
+    Unknown(u16),
+}
+
+impl std::fmt::Display for SystemCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Suica => write!(f, "Suica"),
+            Self::NDEF => write!(f, "NFC NDEF"),
+            Self::HostEmulation => write!(f, "Host-based Emulation"),
+            Self::Octopus => write!(f, "Octopus"),
+            Self::IruCa => write!(f, "IruCa"),
+            Self::PASPY => write!(f, "PASPY"),
+            Self::SAPICA => write!(f, "SAPICA"),
+            Self::OKICA => write!(f, "OKICA"),
+            Self::Ryuto => write!(f, "Ryuto"),
+            Self::FeliCaLiteS => write!(f, "FeliCa Lite-S"),
+            Self::FeliCaSecureID => write!(f, "FeliCa Secure ID"),
+            Self::FeliCaCommon => write!(f, "FeliCa Common Area"),
+            Self::FeliCaPlug => write!(f, "FeliCa Plug"),
+            Self::Unknown(v) => write!(f, "Unknown({:04X})", v),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
 pub enum CommandCode {
     RequestResponse = 0x04,
@@ -215,59 +269,7 @@ impl<'a> Response<'a> for ReadWithoutEncryptionResponse<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
-#[repr(u16)]
-pub enum SystemCode {
-    /// Suica (JR East). Also on many compatible cards, eg. Pasmo, ICOCA.
-    Suica = 0x0003,
-    /// Sytem that uses regular NFC NDEF.
-    NDEF = 0x12FC,
-    /// Host-based Emulation for NFC-F (HCE-F).
-    HostEmulation = 0x4000,
-    /// Octopus (Hong Kong).
-    Octopus = 0x8008,
-    /// IruCa (Takamatsu-Kotohira Electric Railroad).
-    IruCa = 0x80DE,
-    /// PASPY (Hiroshima).
-    PASPY = 0x8592,
-    /// SAPICA (Sapporo).
-    SAPICA = 0x865E,
-    /// OKICA (Okinawa).
-    OKICA = 0x8FC1,
-    /// Ryuto (Niigata).
-    Ryuto = 0x8B5D,
-    /// FeliCa Lite-S
-    FeliCaLiteS = 0x88B4,
-    /// FeliCa Secure ID
-    FeliCaSecureID = 0x957A,
-    /// FeliCa Networks "Common Area".
-    FeliCaCommon = 0xFE00,
-    /// FeliCa Plug
-    FeliCaPlug = 0xFEE1,
-    #[num_enum(catch_all)]
-    Unknown(u16),
-}
 
-impl std::fmt::Display for SystemCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Suica => write!(f, "Suica"),
-            Self::NDEF => write!(f, "NFC NDEF"),
-            Self::HostEmulation => write!(f, "Host-based Emulation"),
-            Self::Octopus => write!(f, "Octopus"),
-            Self::IruCa => write!(f, "IruCa"),
-            Self::PASPY => write!(f, "PASPY"),
-            Self::SAPICA => write!(f, "SAPICA"),
-            Self::OKICA => write!(f, "OKICA"),
-            Self::Ryuto => write!(f, "Ryuto"),
-            Self::FeliCaLiteS => write!(f, "FeliCa Lite-S"),
-            Self::FeliCaSecureID => write!(f, "FeliCa Secure ID"),
-            Self::FeliCaCommon => write!(f, "FeliCa Common Area"),
-            Self::FeliCaPlug => write!(f, "FeliCa Plug"),
-            Self::Unknown(v) => write!(f, "Unknown({:04X})", v),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct RequestSystemCode {
