@@ -276,6 +276,23 @@ impl From<u16> for ServiceCode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AreaCode {
+    pub code: u16,   // Full code.
+    pub number: u16, // 10 bits.
+    pub attrs: u8,   // 6 bits.
+}
+
+impl From<u16> for AreaCode {
+    fn from(v: u16) -> Self {
+        Self {
+            code: v,
+            number: v >> 6,
+            attrs: ((v as u8) & 0x3F).into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
 pub enum CommandCode {
@@ -459,7 +476,7 @@ impl TryIntoCtx for &SearchServiceCode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchServiceCodeResult {
-    Area { code: u16, max_service: u16 },
+    Area { code: AreaCode, end: u16 },
     Service { code: ServiceCode },
 }
 
@@ -483,9 +500,9 @@ impl<'a> Response<'a> for SearchServiceCodeResponse {
                 }
             })(data)?
         } else {
-            let (data, code) = le_u16(data)?;
-            let (data, max_service) = le_u16(data)?;
-            let result = SearchServiceCodeResult::Area { code, max_service };
+            let (data, code) = le_u16(data).map(|(r, v)| (r, v.into()))?;
+            let (data, end) = le_u16(data)?;
+            let result = SearchServiceCodeResult::Area { code, end };
             (data, Some(result))
         };
         Ok((data, Self { idm, result }))
