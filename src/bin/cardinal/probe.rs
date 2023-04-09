@@ -575,10 +575,30 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
         loop {
             let rsp = felica::SearchServiceCode { idm, idx }.call(card, wbuf, rbuf)?;
             idx += 1;
-            if let Some(result) = rsp.result {
-                println!("[{:02}] => {:04X?}", idx, result);
-            } else {
-                break;
+            match rsp.result {
+                Some(felica::SearchServiceCodeResult::Area { code, end }) => {
+                    print!(
+                        " ┃ ├╴{:04X}-{:04X}╶╴{}",
+                        code.number,
+                        end.number,
+                        "Area".italic()
+                    );
+                    if code.attrs & 0b0000_0001 > 0 {
+                        print!(" +");
+                    }
+                    println!("");
+                }
+                Some(felica::SearchServiceCodeResult::Service(code)) => {
+                    print!(
+                        " ┃ ├─╴{:04X}╶╴Service: {}╶╴{}",
+                        code.number, code.kind, code.access
+                    );
+                    if code.auth_req {
+                        print!("╶╴authenticated");
+                    }
+                    println!("");
+                }
+                None => break,
             }
         }
 

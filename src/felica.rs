@@ -260,18 +260,92 @@ impl std::fmt::Display for SystemCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceKind {
+    Invalid,
+    Random,
+    Cyclic,
+    Purse,
+}
+
+impl std::fmt::Display for ServiceKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Invalid => write!(f, "INVALID"),
+            Self::Random => write!(f, "Random"),
+            Self::Cyclic => write!(f, "Cyclic"),
+            Self::Purse => write!(f, "Purse"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceAccess {
+    Invalid,
+    ReadWrite,
+    ReadOnly,
+    PurseDirect,
+    PurseCashbackDecrement,
+    PurseDecrement,
+}
+
+impl std::fmt::Display for ServiceAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Invalid => write!(f, "INVALID"),
+            Self::ReadWrite => write!(f, "Read/Write"),
+            Self::ReadOnly => write!(f, "Read"),
+            Self::PurseDirect => write!(f, "Direct"),
+            Self::PurseCashbackDecrement => write!(f, "Cashback/Decrement"),
+            Self::PurseDecrement => write!(f, "Decrement"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceCode {
     pub code: u16,   // Full code.
     pub number: u16, // 10 bits.
-    pub attrs: u8,   // 6 bits.
+    pub kind: ServiceKind,
+    pub access: ServiceAccess,
+    pub auth_req: bool, // Authentication required?
 }
 
 impl From<u16> for ServiceCode {
     fn from(v: u16) -> Self {
+        let attrs = (v as u8) & 0x3F;
+        let (kind, access, auth_req) = match attrs & 0b00_111111 {
+            0b00_001000 => (ServiceKind::Random, ServiceAccess::ReadWrite, true),
+            0b00_001001 => (ServiceKind::Random, ServiceAccess::ReadWrite, false),
+            0b00_001010 => (ServiceKind::Random, ServiceAccess::ReadOnly, true),
+            0b00_001011 => (ServiceKind::Random, ServiceAccess::ReadOnly, false),
+            0b00_001100 => (ServiceKind::Cyclic, ServiceAccess::ReadWrite, true),
+            0b00_001101 => (ServiceKind::Cyclic, ServiceAccess::ReadWrite, false),
+            0b00_001110 => (ServiceKind::Cyclic, ServiceAccess::ReadOnly, true),
+            0b00_001111 => (ServiceKind::Cyclic, ServiceAccess::ReadOnly, false),
+            0b00_010000 => (ServiceKind::Purse, ServiceAccess::PurseDirect, true),
+            0b00_010001 => (ServiceKind::Purse, ServiceAccess::PurseDirect, false),
+            0b00_010010 => (
+                ServiceKind::Purse,
+                ServiceAccess::PurseCashbackDecrement,
+                true,
+            ),
+            0b00_010011 => (
+                ServiceKind::Purse,
+                ServiceAccess::PurseCashbackDecrement,
+                false,
+            ),
+            0b00_010100 => (ServiceKind::Purse, ServiceAccess::PurseDecrement, true),
+            0b00_010101 => (ServiceKind::Purse, ServiceAccess::PurseDecrement, false),
+            0b00_010110 => (ServiceKind::Purse, ServiceAccess::ReadOnly, true),
+            0b00_010111 => (ServiceKind::Purse, ServiceAccess::ReadOnly, false),
+            _ => (ServiceKind::Invalid, ServiceAccess::Invalid, false),
+        };
         Self {
             code: v,
             number: v >> 6,
-            attrs: (v as u8) & 0x3F,
+            kind,
+            access,
+            auth_req,
         }
     }
 }
@@ -476,8 +550,8 @@ impl TryIntoCtx for &SearchServiceCode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchServiceCodeResult {
-    Area { code: AreaCode, end: u16 },
-    Service { code: ServiceCode },
+    Area { code: AreaCode, end: ServiceCode },
+    Service(ServiceCode),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -496,12 +570,12 @@ impl<'a> Response<'a> for SearchServiceCodeResponse {
                 if code == 0xFFFF {
                     None
                 } else {
-                    Some(SearchServiceCodeResult::Service { code: code.into() })
+                    Some(SearchServiceCodeResult::Service(code.into()))
                 }
             })(data)?
         } else {
             let (data, code) = le_u16(data).map(|(r, v)| (r, v.into()))?;
-            let (data, end) = le_u16(data)?;
+            let (data, end) = le_u16(data).map(|(r, v)| (r, v.into()))?;
             let result = SearchServiceCodeResult::Area { code, end };
             (data, Some(result))
         };
