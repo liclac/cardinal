@@ -111,6 +111,99 @@ fn parse_response_header(code: CommandCode, data: &[u8]) -> IResult<u64> {
     be_u64(data)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ICType {
+    FeliCaRCSA212 = 0x46,
+    FeliCaRCSA202 = 0x45,
+    FeliCaRCSA201 = 0x44,
+    FeliCaRCSA012 = 0x35,
+    FeliCaRCSA001 = 0x32,
+    FeliCaRCS962 = 0x20,
+    FeliCaRCS960 = 0x0D,
+    FeliCaRCS953 = 0x09,
+    FeliCaRCS952 = 0x08,
+    FeliCaRCS915 = 0x01,
+    MobileFeliCaV3(u8) = 0x14, // 0x14-0x1F
+    MobileFeliCaV2(u8) = 0x10, // 0x10-0x13
+    MobileFeliCaV1(u8) = 0x06, // 0x06-0x07
+    FeliCaLiteRCS966 = 0xF1,
+    FeliCaLiteRCS965 = 0xF0,
+    FeliCaLinkRCS967LiteSMode = 0xF2,
+    FeliCaLinkRCS967PlugMode = 0xE1,
+    FeliCaLinkRCS967NFCDEPMode = 0xFF,
+    FeliCaPlugRCS926 = 0xE0,
+    Unknown(u8) = 0x00,
+}
+
+impl From<u8> for ICType {
+    fn from(v: u8) -> Self {
+        match v {
+            0x46 => Self::FeliCaRCSA212,
+            0x45 => Self::FeliCaRCSA202,
+            0x44 => Self::FeliCaRCSA201,
+            0x35 => Self::FeliCaRCSA012,
+            0x32 => Self::FeliCaRCSA001,
+            0x20 => Self::FeliCaRCS962,
+            0x0D => Self::FeliCaRCS960,
+            0x09 => Self::FeliCaRCS953,
+            0x08 => Self::FeliCaRCS952,
+            0x01 => Self::FeliCaRCS915,
+            0x14..=0x1F => Self::MobileFeliCaV3(v),
+            0x10..=0x13 => Self::MobileFeliCaV2(v),
+            0x06..=0x07 => Self::MobileFeliCaV1(v),
+            0xF1 => Self::FeliCaLiteRCS966,
+            0xF0 => Self::FeliCaLiteRCS965,
+            0xF2 => Self::FeliCaLinkRCS967LiteSMode,
+            0xE1 => Self::FeliCaLinkRCS967PlugMode,
+            0xFF => Self::FeliCaLinkRCS967NFCDEPMode,
+            0xE0 => Self::FeliCaPlugRCS926,
+            _ => Self::Unknown(v),
+        }
+    }
+}
+
+impl std::fmt::Display for ICType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FeliCaRCSA212 => write!(f, "FeliCa RC-SA21/2"),
+            Self::FeliCaRCSA202 => write!(f, "FeliCa RC-SA20/2"),
+            Self::FeliCaRCSA201 => write!(f, "FeliCa RC-SA20/1"),
+            Self::FeliCaRCSA012 => write!(f, "FeliCa RC-SA01/2"),
+            Self::FeliCaRCSA001 => write!(f, "FeliCa RC-SA00/1"),
+            Self::FeliCaRCS962 => write!(f, "FeliCa RC-S962"),
+            Self::FeliCaRCS960 => write!(f, "FeliCa RC-S960"),
+            Self::FeliCaRCS953 => write!(f, "FeliCa RC-S953"),
+            Self::FeliCaRCS952 => write!(f, "FeliCa RC-S952"),
+            Self::FeliCaRCS915 => write!(f, "FeliCa RC-S915"),
+            Self::MobileFeliCaV3(v) => write!(f, "Mobile FeliCa 3.{}", v - 0x14),
+            Self::MobileFeliCaV2(v) => write!(f, "Mobile FeliCa 2.{}", v - 0x10),
+            Self::MobileFeliCaV1(v) => write!(f, "Mobile FeliCa 1.{}", v - 0x06),
+            Self::FeliCaLiteRCS966 => write!(f, "FeliCa Lite RC-S966"),
+            Self::FeliCaLiteRCS965 => write!(f, "FeliCa Lite RC-S965"),
+            Self::FeliCaLinkRCS967LiteSMode => write!(f, "FeliCa Link RC-S967 (Lite-S/HT Mode)"),
+            Self::FeliCaLinkRCS967PlugMode => write!(f, "FeliCa Link RC-S967 (Plug Mode)"),
+            Self::FeliCaLinkRCS967NFCDEPMode => write!(f, "FeliCa Link RC-S967 (NFC-DEP Mode)"),
+            Self::FeliCaPlugRCS926 => write!(f, "FeliCa Plug RC-S926"),
+            Self::Unknown(v) => write!(f, "Unknown (0x{:02X})", v),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
+#[repr(u8)]
+pub enum ROMType {
+    #[num_enum(catch_all)]
+    Unknown(u8),
+}
+
+/// A SystemCode identifies the type of a System on a card with multiple ones.
+///
+/// The generic ones (NDEF, HostEmulation, and the ones starting with "FeliCa") are
+/// defined in the "FeliCa Technology Code Descriptions" available from Sony:
+///   https://www.sony.net/Products/felica/business/tech-support/
+///
+/// The branded ones are from scanning different cards, and various websites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, FromPrimitive)]
 #[repr(u16)]
 pub enum SystemCode {

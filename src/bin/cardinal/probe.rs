@@ -533,12 +533,16 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
     // Hm, the lower 2 bytes of the IDm are the Manufacturer Code, can we decode that?
     let idm0 = felica::cid_to_idm(cid)
         .tap_err(|err| error!(?err, "CID is not a valid IDm?? this should be impossible??"))?;
-    println!("┠╴IDm: {:016X}", idm0);
+    println!("┠─╴IDm: {:016X}", idm0);
 
     // The PMm is a whole thing we can definitely decode.
     pcsc_get_data(card, wbuf, rbuf, 0x01)
         .tap_err(|err| warn!(?err, "Couldn't query PMm? (Not important.)"))
-        .tap_ok(|v| println!("┠╴PMm: {}", hex::encode_upper(v)))?;
+        .tap_ok(|pmm| {
+            println!("┠┬╴PMm: {}", hex::encode_upper(pmm));
+            println!("┃└┬╴ROM Type: {:02X}", pmm[0]);
+            println!("┃ └╴IC Type: {}", felica::ICType::from(pmm[1]));
+        })?;
 
     // A physical FeliCa card can have multiple virtual cards, or Systems.
     println!("┃");
