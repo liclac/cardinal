@@ -573,6 +573,7 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
 
         // Loop through Areas and Services.
         for idx in 0.. {
+            debug!(system = i, idx, "Requesting next area or service...");
             match (felica::SearchServiceCode { idm, idx }.call(card, wbuf, rbuf)?).result {
                 Some(felica::SearchServiceCodeResult::Area { code, end }) => {
                     print!(
@@ -587,19 +588,37 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                     println!("");
                 }
                 Some(felica::SearchServiceCodeResult::Service(code)) => {
-                    println!(
-                        " ┃ ├{}╴{:04X}╶╴Service: {:6}╶╴{}{}",
+                    // Request a key for the service. Mostly a sanity check for the Service Code.
+                    debug!(code = code.code, "Requesting key for service...");
+                    let svcrsp = felica::RequestService {
+                        idm,
+                        node_codes: vec![code.code],
+                    }
+                    .call(card, wbuf, rbuf)?;
+
+                    // Print the service line.
+                    print!(
+                        " ┃ ├{}╴{:04X}╶╴Service: {:6}╶╴{}",
                         if code.is_authenticated { "─" } else { "┬" },
                         code.number,
                         code.kind,
                         code.access,
-                        if code.is_authenticated {
-                            "╶╴locked"
-                        } else {
-                            ""
-                        }
-                        .italic()
                     );
+                    if code.is_authenticated {
+                        print!(
+                            "{} {}",
+                            "╶╴authenticated, key".italic(),
+                            svcrsp
+                                .key_versions
+                                .first()
+                                .copied()
+                                .unwrap_or_default()
+                                .italic()
+                        );
+                    }
+                    println!("");
+
+                    // If we can read the data, do it!
                     if !code.is_authenticated {
                         match code.kind {
                             felica::ServiceKind::Random => {
@@ -618,7 +637,10 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                         println!(" ┃ │");
                     }
                 }
-                None => break,
+                None => {
+                    debug!("No more services!");
+                    break;
+                }
             }
         }
 
