@@ -39,7 +39,7 @@
 use crate::{util, Result};
 use nom::bytes::complete::{tag, take};
 use nom::combinator::map;
-use nom::number::complete::{be_u64, le_u16, le_u8};
+use nom::number::complete::{be_u16, be_u64, be_u8, le_u16};
 use num_enum::{FromPrimitive, IntoPrimitive};
 use pcsc::Card;
 use scroll::ctx::TryIntoCtx;
@@ -416,7 +416,7 @@ impl<'a> Response<'a> for RequestServiceResponse {
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
-        let (data, num) = le_u8(data)?;
+        let (data, num) = be_u8(data)?;
         let (mut data, mut key_versions) = (data, vec![]);
         for _ in 0..num {
             let (data_, ver) = le_u16(data)?;
@@ -459,7 +459,7 @@ impl<'a> Response<'a> for RequestResponseResponse {
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
-        let (data, mode) = le_u8(data)?;
+        let (data, mode) = be_u8(data)?;
         Ok((data, Self { idm, mode }))
     }
 }
@@ -473,7 +473,7 @@ pub struct ReadWithoutEncryption {
 
 impl<'a> Command<'a> for &ReadWithoutEncryption {
     const CODE: CommandCode = CommandCode::ReadWithoutEncryption;
-    type Response = ReadWithoutEncryptionResponse<'a>;
+    type Response = ReadWithoutEncryptionResponse;
 }
 
 impl TryIntoCtx for &ReadWithoutEncryption {
@@ -496,23 +496,41 @@ impl TryIntoCtx for &ReadWithoutEncryption {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ReadWithoutEncryptionResponse<'a> {
+pub struct ReadWithoutEncryptionResponse {
     pub idm: u64,
     pub status: (u8, u8),
-    pub blocks: Vec<&'a [u8]>,
+    pub blocks: Vec<Vec<u8>>,
 }
 
-impl<'a> Response<'a> for ReadWithoutEncryptionResponse<'a> {
+impl<'a> Response<'a> for ReadWithoutEncryptionResponse {
     const CODE: CommandCode = CommandCode::ReadWithoutEncryptionResponse;
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
+        let (data, status) = map(be_u16, |v| {
+            let b = v.to_be_bytes();
+            (b[0], b[1])
+        })(data)?;
+
+        // Block data is only included if status is (0x00, 0x00).
+        let (data, blocks) = if status == (0x00, 0x00) {
+            let (mut data, num_blocks) = be_u8(data)?;
+            let mut blocks = vec![];
+            for _ in 0..num_blocks {
+                let (data_, block) = take(16usize)(data)?;
+                data = data_;
+                blocks.push(block.to_owned());
+            }
+            (data, blocks)
+        } else {
+            (data, vec![])
+        };
         Ok((
             data,
             Self {
                 idm,
-                status: (0, 0),
-                blocks: vec![],
+                status,
+                blocks,
             },
         ))
     }
@@ -608,7 +626,7 @@ impl<'a> Response<'a> for RequestSystemCodeResponse {
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
-        let (data, num_systems) = le_u8(data)?;
+        let (data, num_systems) = be_u8(data)?;
         let (data, systems_data) = take(num_systems * 2)(data)?;
         let systems = systems_data
             .chunks(2)

@@ -620,18 +620,28 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
 
                     // If we can read the data, do it!
                     if !code.is_authenticated {
-                        match code.kind {
-                            felica::ServiceKind::Random => {
-                                println!(" ┃ │└─╴[TODO: random access]");
+                        for block_num in 0.. {
+                            debug!(svc = code.code, blk = block_num, "Reading block...");
+                            let rsp = felica::ReadWithoutEncryption {
+                                idm,
+                                services: vec![code.code],
+                                blocks: vec![felica::BlockListElement {
+                                    mode: felica::AccessMode::Normal,
+                                    service_idx: 0,
+                                    block_num,
+                                }],
                             }
-                            felica::ServiceKind::Cyclic => {
-                                println!(" ┃ │└─╴[TODO: cyclic access]");
+                            .call(card, wbuf, rbuf)?;
+                            for block in rsp.blocks {
+                                if block_num == 0 {
+                                    println!(" ┃ │└┤ {}", hex::encode_upper(&block));
+                                } else {
+                                    println!(" ┃ │ │ {}", hex::encode_upper(&block));
+                                }
                             }
-                            felica::ServiceKind::Purse => {
-                                println!(" ┃ │└─╴[TODO: purse access]");
-                            }
-                            felica::ServiceKind::Invalid => {
-                                println!(" ┃ │└─╴[INVALID SERVICE TYPE]");
+                            if rsp.status != (0x00, 0x00) {
+                                debug!("No more blocks!");
+                                break;
                             }
                         }
                         println!(" ┃ │");
