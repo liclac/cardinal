@@ -346,15 +346,16 @@ impl From<u16> for ServiceCode {
 pub struct AreaCode {
     pub code: u16,   // Full code.
     pub number: u16, // 10 bits.
-    pub attrs: u8,   // 6 bits.
+    pub can_subdivide: bool,
 }
 
 impl From<u16> for AreaCode {
     fn from(v: u16) -> Self {
+        let attrs = (v as u8) & 0x3F;
         Self {
             code: v,
             number: v >> 6,
-            attrs: ((v as u8) & 0x3F).into(),
+            can_subdivide: attrs & 0b0000_0001 > 0,
         }
     }
 }

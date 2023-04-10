@@ -571,11 +571,9 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                 }
             });
 
-        let mut idx = 0;
-        loop {
-            let rsp = felica::SearchServiceCode { idm, idx }.call(card, wbuf, rbuf)?;
-            idx += 1;
-            match rsp.result {
+        // Loop through Areas and Services.
+        for idx in 0.. {
+            match (felica::SearchServiceCode { idm, idx }.call(card, wbuf, rbuf)?).result {
                 Some(felica::SearchServiceCodeResult::Area { code, end }) => {
                     print!(
                         " ┃ ├╴{:04X}-{:04X}╶╴{}",
@@ -583,7 +581,7 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                         end.number,
                         "Area".italic()
                     );
-                    if code.attrs & 0b0000_0001 > 0 {
+                    if code.can_subdivide {
                         print!(" +");
                     }
                     println!("");
