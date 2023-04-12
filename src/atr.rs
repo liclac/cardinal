@@ -118,9 +118,12 @@ fn parse_txn<Ta: From<u8>, Tb: From<u8>, Tc: From<u8>>(
     ))
 }
 
+/// ISO 7816-4 Section 12.1.1 - Historical bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HistoricalBytes {
     Status(HistoricalBytesStatus),
+    /// Category Indicator 0x00 or 0x80. If 0x00, must be followed by a status indicator,
+    /// for 0x80, the last element may contain a status indicator in COMPACT-TLV format.
     TLV(HistoricalBytesTLV),
     Unknown(u8, Vec<u8>),
 }
@@ -296,11 +299,17 @@ fn parse_historical_bytes<'a>(data: &'a [u8]) -> IResult<HistoricalBytes> {
                 HistoricalBytes::Unknown(tag, data.to_owned())
             },
         )),
-        (data, 0x80) => Ok({
+        (data, ci @ 0x00) | (data, ci @ 0x80) => Ok({
             let mut tlv = HistoricalBytesTLV::default();
             tlv.raw = data.to_owned();
 
             let mut rest = data;
+            // If the Category Indicator is 0x00, the last 3 bytes are a status code.
+            if ci == 0x00 {
+                let (rest_, raw_status) = rest.split_at(rest.len() - 3);
+                rest = rest_;
+                tlv.status = parse_historical_bytes_status(raw_status);
+            }
             while rest.len() > 0 {
                 // This isn't BER, this is COMPACT-TLV. High nibble is a tag, low is a length.
                 // Thankfully, this makes the parser nice and compact, too.
@@ -317,6 +326,7 @@ fn parse_historical_bytes<'a>(data: &'a [u8]) -> IResult<HistoricalBytes> {
 
                 let (data, value) = take(length)(data)?;
                 match tag {
+                    0x00 => {} // Skip empty padding elements.
                     0x30 => tlv.service_data = value.first().copied(),
                     0x40 => {
                         tlv.initial_access = parse_initial_access(value)
@@ -328,7 +338,7 @@ fn parse_historical_bytes<'a>(data: &'a [u8]) -> IResult<HistoricalBytes> {
                             .ok()
                     }
                     0x60 => tlv.pre_issuing_data = Some(value.to_owned()),
-                    0x80 => tlv.status = parse_historical_bytes_status(value),
+                    0x80 => tlv.status = parse_historical_bytes_status(value).or(tlv.status),
                     _ => warn!("unknown tag: {:02X} => {:02X?}", tag, value),
                 }
                 rest = data;
@@ -512,6 +522,52 @@ mod tests {
                 })),
                 tck: 0x42,
             }
+        );
+    }
+
+    #[test]
+    fn test_parse_apple_pay() {
+        // ATR from Apple Pay. Seems static regardless of virtual card, standard or network used.
+        let atr = parse(&[
+            0x3B, 0x88, 0x80, 0x01, 0x00, 0x00, 0x00, 0x00, 0x80, 0x81, 0x71, 0x00, 0x79,
+        ])
+        .expect("couldn't parse ATR");
+
+        assert_eq!(
+            atr,
+            ATR {
+                ts: TS::Direct,
+                t0: T0 { tx1: 0b1000, k: 8 },
+                tx1: TXn {
+                    ta: None,
+                    tb: None,
+                    tc: None,
+                    td: Some(TDn {
+                        protocol: Protocol::T0,
+                        txn: 0b1000,
+                    }),
+                },
+                tx2: TXn {
+                    ta: None,
+                    tb: None,
+                    tc: None,
+                    td: Some(TDn {
+                        protocol: Protocol::T1,
+                        txn: 0b0000,
+                    }),
+                },
+                tx3: TXn::default(),
+                // This is complete gibberish. 3 empty tags with length 0, then an empty status?
+                historical_bytes: Some(HistoricalBytes::TLV(HistoricalBytesTLV {
+                    raw: vec![0x00, 0x00, 0x00, 0x80, 0x81, 0x71, 0x00],
+                    status: Some(HistoricalBytesStatus {
+                        status: Some(0x81),
+                        sw1sw2: Some(0x7100)
+                    }),
+                    ..Default::default()
+                })),
+                tck: 0x79,
+            },
         );
     }
 }
