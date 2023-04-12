@@ -6,7 +6,7 @@ use pcsc::Context;
 use tracing::{debug, trace, trace_span};
 
 #[derive(clap::Parser, Debug)]
-struct Args {
+pub struct Args {
     /// Increase log level.
     #[arg(short, long, action=clap::ArgAction::Count)]
     verbose: u8,
@@ -19,13 +19,17 @@ struct Args {
     #[arg(short, long)]
     reader: Option<String>,
 
+    /// Force a specific standard.
+    #[arg(short = 'S', long, value_enum)]
+    force_standard: Option<cardinal::atr::Standard>,
+
     /// Command.
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(clap::Subcommand, Debug)]
-enum Command {
+pub enum Command {
     /// Probe connected card.
     Probe,
 
@@ -48,7 +52,7 @@ impl Command {
         let ctx = Context::establish(pcsc::Scope::User)?;
         let mut card = select_card(&ctx, &args.reader)?;
         debug!("Probing card...");
-        probe::probe(&mut card)?;
+        probe::probe(&args, &mut card)?;
         Ok(())
     }
 
@@ -66,7 +70,7 @@ impl Command {
 }
 
 fn select_card(ctx: &Context, name_: &Option<String>) -> Result<pcsc::Card> {
-    let span = trace_span!("select_card", name_);
+    let span = trace_span!("select_card", name = name_);
     let _enter = span.enter();
 
     Ok(if let Some(name) = name_ {

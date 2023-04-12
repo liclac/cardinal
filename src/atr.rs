@@ -235,6 +235,22 @@ pub enum Standard {
     Unknown(u8),
 }
 
+// TOOD: feature gate anything interacting with clap.
+impl clap::ValueEnum for Standard {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Self::Iso14443a3, Self::FeliCa]
+    }
+
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        use clap::builder::PossibleValue;
+        match self {
+            Self::Iso14443a3 => Some(PossibleValue::new("iso14443")),
+            Self::FeliCa => Some(PossibleValue::new("felica")),
+            _ => None,
+        }
+    }
+}
+
 impl Display for Standard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

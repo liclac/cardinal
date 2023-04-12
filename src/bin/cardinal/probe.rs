@@ -6,7 +6,7 @@ use pcsc::Card;
 use tap::{TapFallible, TapOptional};
 use tracing::{debug, error, trace_span, warn};
 
-pub fn probe(card: &mut Card) -> Result<()> {
+pub fn probe(args: &crate::Args, card: &mut Card) -> Result<()> {
     let mut wbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Request buffer.
     let mut rbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Response buffer.
 
@@ -16,7 +16,11 @@ pub fn probe(card: &mut Card) -> Result<()> {
         .ok();
     let atr = probe_atr(card, &mut rbuf)?;
 
-    match get_atr_card_standard(&atr) {
+    match args
+        .force_standard
+        .tap_some(|std| debug!(?std, "Ignoring ATR, using --force-standard"))
+        .unwrap_or_else(|| get_atr_card_standard(&atr))
+    {
         atr::Standard::FeliCa => {
             println!("--------------- FeliCa ---------------");
             if let Some(cid) = cid {
@@ -531,8 +535,13 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
     println!("┏╸{}", "FeliCa".italic());
 
     // Hm, the lower 2 bytes of the IDm are the Manufacturer Code, can we decode that?
-    let idm0 = felica::cid_to_idm(cid)
-        .tap_err(|err| error!(?err, "CID is not a valid IDm?? this should be impossible??"))?;
+    let idm0 = felica::cid_to_idm(cid).tap_err(|err| {
+        error!(
+            ?err,
+            cid = hex::encode_upper(cid),
+            "CID is not a valid IDm?? this should be impossible??"
+        )
+    })?;
     println!("┠─╴IDm: {:016X}", idm0);
 
     // The PMm is a whole thing we can definitely decode.
