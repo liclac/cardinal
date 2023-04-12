@@ -10,6 +10,9 @@ pub fn probe(args: &crate::Args, card: &mut Card) -> Result<()> {
     let mut wbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Request buffer.
     let mut rbuf = [0; pcsc::MAX_BUFFER_SIZE]; // Response buffer.
 
+    println!("------------ READER STATE ------------");
+    probe_reader(card, &mut rbuf);
+
     println!("---------- IDENTIFYING CARD ----------");
     let cid = probe_cid(card, &mut wbuf, &mut rbuf)
         .tap_err(|err| warn!("couldn't probe CID: {}", err))
@@ -40,6 +43,62 @@ pub fn probe(args: &crate::Args, card: &mut Card) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn probe_reader(card: &mut Card, rbuf: &mut [u8]) {
+    for attr in [
+        pcsc::Attribute::VendorName,
+        pcsc::Attribute::VendorIfdType,
+        pcsc::Attribute::VendorIfdVersion,
+        pcsc::Attribute::VendorIfdSerialNo,
+        pcsc::Attribute::ChannelId,
+        pcsc::Attribute::AsyncProtocolTypes,
+        pcsc::Attribute::DefaultClk,
+        pcsc::Attribute::MaxClk,
+        pcsc::Attribute::DefaultDataRate,
+        pcsc::Attribute::MaxDataRate,
+        pcsc::Attribute::MaxIfsd,
+        pcsc::Attribute::SyncProtocolTypes,
+        pcsc::Attribute::PowerMgmtSupport,
+        pcsc::Attribute::UserToCardAuthDevice,
+        pcsc::Attribute::UserAuthInputDevice,
+        pcsc::Attribute::Characteristics,
+        pcsc::Attribute::CurrentProtocolType,
+        pcsc::Attribute::CurrentClk,
+        pcsc::Attribute::CurrentF,
+        pcsc::Attribute::CurrentD,
+        pcsc::Attribute::CurrentN,
+        pcsc::Attribute::CurrentW,
+        pcsc::Attribute::CurrentIfsc,
+        pcsc::Attribute::CurrentIfsd,
+        pcsc::Attribute::CurrentBwt,
+        pcsc::Attribute::CurrentCwt,
+        pcsc::Attribute::CurrentEbcEncoding,
+        pcsc::Attribute::ExtendedBwt,
+        pcsc::Attribute::IccPresence,
+        pcsc::Attribute::IccInterfaceStatus,
+        pcsc::Attribute::CurrentIoState,
+        pcsc::Attribute::AtrString,
+        pcsc::Attribute::IccTypePerAtr,
+        pcsc::Attribute::EscReset,
+        pcsc::Attribute::EscCancel,
+        pcsc::Attribute::EscAuthrequest,
+        pcsc::Attribute::Maxinput,
+        pcsc::Attribute::DeviceUnit,
+        pcsc::Attribute::DeviceInUse,
+        pcsc::Attribute::DeviceFriendlyName,
+        pcsc::Attribute::DeviceSystemName,
+        pcsc::Attribute::SupressT1IfsRequest,
+    ] {
+        if let Ok(v) = card
+            .get_attribute(attr, rbuf)
+            .tap_err(|err| debug!(?attr, ?err, "Couldn't query reader attribute"))
+        {
+            match attr {
+                _ => println!("{:?} => {}", attr, hex::encode_upper(v)),
+            }
+        }
+    }
 }
 
 fn pcsc_get_data<'r>(
