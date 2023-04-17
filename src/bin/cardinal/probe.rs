@@ -640,10 +640,15 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
             });
 
         // Loop through Areas and Services.
+        let mut last_service_num = None;
         for idx in 0.. {
             debug!(system = i, idx, "Requesting next area or service...");
             match (felica::SearchServiceCode { idm, idx }.call(card, wbuf, rbuf)?).result {
                 Some(felica::SearchServiceCodeResult::Area { code, end }) => {
+                    if last_service_num.is_some() {
+                        println!(" ┃ │╵");
+                        last_service_num = None;
+                    }
                     print!(
                         " ┃ ├╴{:04X}-{:04X}╶╴{}",
                         code.number,
@@ -656,26 +661,30 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                     println!("");
                 }
                 Some(felica::SearchServiceCodeResult::Service(code)) => {
-                    // Request a key for the service. Mostly a sanity check for the Service Code.
-                    debug!(code = code.code, "Requesting key for service...");
-                    let svcrsp = felica::RequestService {
-                        idm,
-                        node_codes: vec![code.code],
+                    // Print the header once per distinct service number.
+                    if last_service_num != Some(code.number) {
+                        if last_service_num.is_some() {
+                            println!(" ┃ │╵");
+                        }
+                        last_service_num = Some(code.number);
+                        println!(" ┃ ├┬╴{:04X} Service: {}", code.number, code.kind);
                     }
-                    .call(card, wbuf, rbuf)?;
 
-                    // Print the service line.
-                    print!(
-                        " ┃ ├{}╴{:04X}╶╴Service: {:6}╶╴{}",
-                        if code.is_authenticated { "─" } else { "┬" },
-                        code.number,
-                        code.kind,
-                        code.access,
-                    );
+                    // Print the subtitle once per access mode (1+ times).
                     if code.is_authenticated {
-                        print!(
-                            "{} {}",
-                            "╶╴authenticated, key".italic(),
+                        // Request a key for the service. Mostly a sanity check for the Service Code.
+                        debug!(code = code.code, "Requesting key for service...");
+                        let svcrsp = felica::RequestService {
+                            idm,
+                            node_codes: vec![code.code],
+                        }
+                        .call(card, wbuf, rbuf)?;
+
+                        println!(
+                            " ┃ │├─╴{:04X}╶╴{}╶╴{}{}",
+                            code.code,
+                            code.access,
+                            "authenticated, key ".italic(),
                             svcrsp
                                 .key_versions
                                 .first()
@@ -683,11 +692,8 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                                 .unwrap_or_default()
                                 .italic()
                         );
-                    }
-                    println!("");
-
-                    // If we can read the data, do it!
-                    if !code.is_authenticated {
+                    } else {
+                        println!(" ┃ │├┬╴{:04X}╶╴{}", code.code, code.access);
                         for block_num in 0.. {
                             debug!(svc = code.code, blk = block_num, "Reading block...");
                             let rsp = felica::ReadWithoutEncryption {
@@ -702,9 +708,9 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                             .call(card, wbuf, rbuf)?;
                             for block in rsp.blocks {
                                 if block_num == 0 {
-                                    println!(" ┃ │└┤ {}", hex::encode_upper(&block));
+                                    println!(" ┃ ││└┤ {}", hex::encode_upper(&block));
                                 } else {
-                                    println!(" ┃ │ │ {}", hex::encode_upper(&block));
+                                    println!(" ┃ ││ │ {}", hex::encode_upper(&block));
                                 }
                             }
                             if rsp.status != (0x00, 0x00) {
@@ -712,7 +718,6 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
                                 break;
                             }
                         }
-                        println!(" ┃ │");
                     }
                 }
                 None => {
@@ -722,6 +727,7 @@ fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8]) -
             }
         }
 
+        println!(" ┃ │╵");
         println!(" ┃ ╵");
     }
 
