@@ -1,4 +1,5 @@
 mod probe;
+mod probe_felica;
 
 use anyhow::{anyhow, Result};
 use clap::Parser as _;
