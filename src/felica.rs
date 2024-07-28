@@ -1,3 +1,5 @@
+pub mod cybernet;
+
 use crate::{util, Result};
 use nom::bytes::complete::{tag, take};
 use nom::combinator::map;

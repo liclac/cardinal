@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 tracing = "0.1"
 thiserror = "1.0"
+chrono = "0.4"
 tap = "1"
 pcsc = "2"
 apdu = "0.4"
