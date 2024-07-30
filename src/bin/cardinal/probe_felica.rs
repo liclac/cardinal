@@ -197,8 +197,43 @@ fn probe_felica_lite_s(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], idm0: 
         }
         println!(" ┃ ├┬╴{:04X} Service: {}", svc.number, svc.kind);
         println!(" ┃ │├┬╴{:04X}╶╴{}", svc.code, svc.access);
-        for block_num in 0.. {
-            debug!(svc = svc.code, blk = block_num, "Reading block...");
+        let blocks = [
+            (0x00, "S_PAD0"),
+            (0x01, "S_PAD1"),
+            (0x02, "S_PAD2"),
+            (0x03, "S_PAD3"),
+            (0x04, "S_PAD4"),
+            (0x05, "S_PAD5"),
+            (0x06, "S_PAD6"),
+            (0x07, "S_PAD7"),
+            (0x08, "S_PAD8"),
+            (0x09, "S_PAD9"),
+            (0x0A, "S_PAD10"),
+            (0x0B, "S_PAD11"),
+            (0x0C, "S_PAD12"),
+            (0x0D, "S_PAD13"),
+            (0x0E, "REG"),
+            (0x80, "RC"),
+            (0x81, "MAC"),
+            (0x82, "ID"),
+            (0x83, "D_ID"),
+            (0x84, "SER_C"),
+            (0x85, "SYS_C"),
+            (0x86, "CKV"),
+            (0x87, "CK"),
+            (0x88, "MC"),
+            (0x90, "WCNT"),
+            (0x91, "MAC_A"),
+            (0x92, "STATE"),
+            (0xA0, "CRC_CHK"),
+        ];
+        for (block_num, block_name) in blocks {
+            debug!(
+                svc = svc.code,
+                blk = block_num,
+                name = block_name,
+                "Reading block..."
+            );
             let rsp = felica::ReadWithoutEncryption {
                 idm,
                 services: vec![svc.code],
@@ -209,16 +244,21 @@ fn probe_felica_lite_s(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], idm0: 
                 }],
             }
             .call(card, wbuf, rbuf)?;
-            for block in rsp.blocks {
-                if block_num == 0 {
-                    println!(" ┃ ││└┤ {}", hex::encode_upper(&block));
-                } else {
-                    println!(" ┃ ││ │ {}", hex::encode_upper(&block));
+            if rsp.status == (0x00, 0x00) {
+                for block in rsp.blocks {
+                    if block_num == 0 {
+                        println!(" ┃ ││└┤ [{:7}] {}", block_name, hex::encode_upper(&block));
+                    } else {
+                        println!(" ┃ ││ │ [{:7}] {}", block_name, hex::encode_upper(&block));
+                    }
                 }
-            }
-            if rsp.status != (0x00, 0x00) {
-                debug!("No more blocks!");
-                break;
+            } else {
+                let placeholder = String::from_utf8(vec![b'?'; 32]).unwrap();
+                if block_num == 0 {
+                    println!(" ┃ ││└┤ [{:7}] {}", block_name, placeholder);
+                } else {
+                    println!(" ┃ ││ │ [{:7}] {}", block_name, placeholder);
+                }
             }
         }
     }
