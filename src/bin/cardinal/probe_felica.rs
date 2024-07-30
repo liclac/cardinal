@@ -33,7 +33,25 @@ pub fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8
     // A physical FeliCa card can have multiple virtual cards, or Systems.
     println!("┃");
     debug!("Listing services...");
-    let sys_rsp = felica::RequestSystemCode { idm: idm0 }.call(card, wbuf, rbuf)?;
+    match (felica::RequestSystemCode { idm: idm0 }.call(card, wbuf, rbuf)) {
+        Ok(sys_rsp) => probe_felica_systems(card, wbuf, rbuf, idm0, sys_rsp),
+        Err(err) => {
+            debug!(
+                ?err,
+                "Couldn't list services, assuming this is a FeliCa Lite (S)"
+            );
+            probe_felica_lite_s(card, wbuf, rbuf, idm0)
+        }
+    }
+}
+
+pub fn probe_felica_systems(
+    card: &mut Card,
+    wbuf: &mut [u8],
+    rbuf: &mut [u8],
+    idm0: u64,
+    sys_rsp: felica::RequestSystemCodeResponse,
+) -> Result<()> {
     for (i, sys) in sys_rsp.systems.iter().copied().enumerate() {
         assert!(i < 0b0000_1111); // We can't stuff IDs larger than 4 bits into the IDm.
         if i == 0 {
@@ -149,5 +167,62 @@ pub fn probe_felica(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], cid: &[u8
         println!(" ┃ ╵");
     }
 
+    Ok(())
+}
+
+fn probe_felica_lite_s(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], idm0: u64) -> Result<()> {
+    let sys = felica::SystemCode::FeliCaLiteS;
+    let idm = felica::idm_for_service(idm0, 0);
+    println!("┗┳┯╸{} {:04X}╺╸{}", "System".italic(), u16::from(sys), sys);
+    println!(" ┃└┬╴IDm: {:016X}", idm);
+
+    // FeliCa Lite(S) chips have two hardcoded service codes, and can't tell you about them.
+    let svc_sys = felica::ServiceCode {
+        code: 0x000B,
+        number: 1,
+        kind: felica::ServiceKind::Random,
+        access: felica::ServiceAccess::ReadOnly,
+        is_authenticated: false,
+    };
+    let svc_usr = felica::ServiceCode {
+        code: 0x0009,
+        number: 2,
+        kind: felica::ServiceKind::Random,
+        access: felica::ServiceAccess::ReadWrite,
+        is_authenticated: false,
+    };
+    for (i, svc) in [&svc_sys, &svc_usr].iter().enumerate() {
+        if i > 0 {
+            println!(" ┃ │╵");
+        }
+        println!(" ┃ ├┬╴{:04X} Service: {}", svc.number, svc.kind);
+        println!(" ┃ │├┬╴{:04X}╶╴{}", svc.code, svc.access);
+        for block_num in 0.. {
+            debug!(svc = svc.code, blk = block_num, "Reading block...");
+            let rsp = felica::ReadWithoutEncryption {
+                idm,
+                services: vec![svc.code],
+                blocks: vec![felica::BlockListElement {
+                    mode: felica::AccessMode::Normal,
+                    service_idx: 0,
+                    block_num,
+                }],
+            }
+            .call(card, wbuf, rbuf)?;
+            for block in rsp.blocks {
+                if block_num == 0 {
+                    println!(" ┃ ││└┤ {}", hex::encode_upper(&block));
+                } else {
+                    println!(" ┃ ││ │ {}", hex::encode_upper(&block));
+                }
+            }
+            if rsp.status != (0x00, 0x00) {
+                debug!("No more blocks!");
+                break;
+            }
+        }
+    }
+    println!(" ┃ │╵");
+    println!(" ┃ ╵");
     Ok(())
 }
