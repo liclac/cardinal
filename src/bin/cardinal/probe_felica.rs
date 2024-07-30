@@ -2,6 +2,7 @@ use crate::probe::pcsc_get_data;
 use crate::Result;
 use cardinal::felica::{self, Command};
 use owo_colors::OwoColorize;
+use pad::PadStr;
 use pcsc::Card;
 use tap::TapFallible;
 use tracing::{debug, error, trace_span, warn};
@@ -244,20 +245,27 @@ fn probe_felica_lite_s(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], idm0: 
                 }],
             }
             .call(card, wbuf, rbuf)?;
+
+            let name_p = format!("╴{:02X}╶╴{}╶", block_num, block_name).pad(
+                13,
+                '─',
+                pad::Alignment::Left,
+                false,
+            );
             if rsp.status == (0x00, 0x00) {
                 for block in rsp.blocks {
                     if block_num == 0 {
-                        println!(" ┃ ││└┤ [{:7}] {}", block_name, hex::encode_upper(&block));
+                        println!(" ┃ ││└┬{:}╴{}", name_p, hex::encode_upper(&block));
                     } else {
-                        println!(" ┃ ││ │ [{:7}] {}", block_name, hex::encode_upper(&block));
+                        println!(" ┃ ││ ├{:}╴{}", name_p, hex::encode_upper(&block));
                     }
                 }
             } else {
                 let placeholder = String::from_utf8(vec![b'?'; 32]).unwrap();
                 if block_num == 0 {
-                    println!(" ┃ ││└┤ [{:7}] {}", block_name, placeholder);
+                    println!(" ┃ ││└┬{:}╴{}", name_p, placeholder);
                 } else {
-                    println!(" ┃ ││ │ [{:7}] {}", block_name, placeholder);
+                    println!(" ┃ ││ ├{:}╴{}", name_p, placeholder);
                 }
             }
         }
