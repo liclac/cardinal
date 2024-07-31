@@ -1,6 +1,6 @@
 pub mod cybernet;
 
-use crate::{util, Result};
+use crate::{util, Error, Result};
 use nom::bytes::complete::{tag, take};
 use nom::combinator::map;
 use nom::number::complete::{be_u16, be_u64, be_u8, le_u16};
@@ -56,12 +56,19 @@ where
         let mut apdu_buf = [0u8; 256];
         let apdu = self.apdu(&mut apdu_buf[..])?;
 
-        Self::Response::parse(util::call_apdu(card, wbuf, rbuf, apdu)?)
+        let rsp = Self::Response::parse(util::call_apdu(card, wbuf, rbuf, apdu)?)?;
+        match rsp.status() {
+            (0x00, 0x00) => Ok(rsp),
+            (flag1, flag2) => Err(Error::FelicaStatus(flag1, flag2)),
+        }
     }
 }
 
 pub trait Response<'a>: Sized {
     const CODE: CommandCode;
+
+    /// Returns the status code of the response.
+    fn status(&self) -> (u8, u8);
 
     fn iparse(data: &'a [u8]) -> IResult<Self>;
     fn parse(data: &'a [u8]) -> Result<Self> {
@@ -380,6 +387,10 @@ pub struct RequestServiceResponse {
 impl<'a> Response<'a> for RequestServiceResponse {
     const CODE: CommandCode = CommandCode::RequestServiceResponse;
 
+    fn status(&self) -> (u8, u8) {
+        (0x00, 0x00)
+    }
+
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
         let (data, num) = be_u8(data)?;
@@ -422,6 +433,10 @@ pub struct RequestResponseResponse {
 
 impl<'a> Response<'a> for RequestResponseResponse {
     const CODE: CommandCode = CommandCode::RequestResponseResponse;
+
+    fn status(&self) -> (u8, u8) {
+        (0x00, 0x00)
+    }
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
@@ -470,6 +485,10 @@ pub struct ReadWithoutEncryptionResponse {
 
 impl<'a> Response<'a> for ReadWithoutEncryptionResponse {
     const CODE: CommandCode = CommandCode::ReadWithoutEncryptionResponse;
+
+    fn status(&self) -> (u8, u8) {
+        self.status
+    }
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
@@ -546,6 +565,10 @@ pub struct WriteWithoutEncryptionResponse {
 impl<'a> Response<'a> for WriteWithoutEncryptionResponse {
     const CODE: CommandCode = CommandCode::WriteWithoutEncryptionResponse;
 
+    fn status(&self) -> (u8, u8) {
+        self.status
+    }
+
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
         let (data, status) = map(be_u16, |v| {
@@ -594,6 +617,10 @@ pub struct SearchServiceCodeResponse {
 
 impl<'a> Response<'a> for SearchServiceCodeResponse {
     const CODE: CommandCode = CommandCode::SearchServiceCodeResponse;
+
+    fn status(&self) -> (u8, u8) {
+        (0x00, 0x00)
+    }
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
@@ -644,6 +671,10 @@ pub struct RequestSystemCodeResponse {
 
 impl<'a> Response<'a> for RequestSystemCodeResponse {
     const CODE: CommandCode = CommandCode::RequestSystemCodeResponse;
+
+    fn status(&self) -> (u8, u8) {
+        (0x00, 0x00)
+    }
 
     fn iparse(data: &'a [u8]) -> IResult<Self> {
         let (data, idm) = parse_response_header(Self::CODE, data)?;
