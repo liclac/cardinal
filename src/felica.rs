@@ -333,6 +333,8 @@ pub enum CommandCode {
     RequestResponseResponse = 0x05, // yo dawg
     ReadWithoutEncryption = 0x06,
     ReadWithoutEncryptionResponse = 0x07,
+    WriteWithoutEncryption = 0x08,
+    WriteWithoutEncryptionResponse = 0x09,
     SearchServiceCode = 0x0A,
     SearchServiceCodeResponse = 0x0B,
     RequestSystemCode = 0x0C,
@@ -497,6 +499,61 @@ impl<'a> Response<'a> for ReadWithoutEncryptionResponse {
                 blocks,
             },
         ))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct WriteWithoutEncryption {
+    pub idm: u64,
+    pub services: Vec<u16>,
+    pub blocks: Vec<BlockListElement>,
+    pub block_data: Vec<[u8; 16]>,
+}
+
+impl<'a> Command<'a> for &WriteWithoutEncryption {
+    const CODE: CommandCode = CommandCode::WriteWithoutEncryption;
+    type Response = WriteWithoutEncryptionResponse;
+}
+
+impl TryIntoCtx for &WriteWithoutEncryption {
+    type Error = scroll::Error;
+
+    fn try_into_ctx(self, wbuf: &mut [u8], _: ()) -> Result<usize, Self::Error> {
+        let mut offset = 0;
+        wbuf.gwrite::<u8>(Self::CODE.into(), &mut offset)?;
+        wbuf.gwrite_with(self.idm, &mut offset, BE)?;
+        wbuf.gwrite::<u8>(self.services.len() as u8, &mut offset)?;
+        for sid in self.services.iter() {
+            wbuf.gwrite_with(sid, &mut offset, LE)?;
+        }
+        wbuf.gwrite::<u8>(self.blocks.len() as u8, &mut offset)?;
+        for bid in self.blocks.iter() {
+            wbuf.gwrite(bid, &mut offset)?;
+        }
+        for data in self.block_data.iter() {
+            wbuf.gwrite(&data[..], &mut offset)?;
+        }
+        Ok(offset)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct WriteWithoutEncryptionResponse {
+    pub idm: u64,
+    pub status: (u8, u8),
+}
+
+impl<'a> Response<'a> for WriteWithoutEncryptionResponse {
+    const CODE: CommandCode = CommandCode::WriteWithoutEncryptionResponse;
+
+    fn iparse(data: &'a [u8]) -> IResult<Self> {
+        let (data, idm) = parse_response_header(Self::CODE, data)?;
+        let (data, status) = map(be_u16, |v| {
+            let b = v.to_be_bytes();
+            (b[0], b[1])
+        })(data)?;
+
+        Ok((data, Self { idm, status }))
     }
 }
 
