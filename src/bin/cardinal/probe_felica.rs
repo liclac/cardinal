@@ -1,6 +1,9 @@
 use crate::probe::pcsc_get_data;
 use crate::Result;
-use cardinal::felica::{self, Command};
+use cardinal::{
+    felica::{self, Command},
+    Error,
+};
 use owo_colors::OwoColorize;
 use pad::PadStr;
 use pcsc::Card;
@@ -133,7 +136,7 @@ pub fn probe_felica_systems(
                         println!(" ┃ │├┬╴{:04X}╶╴{}", code.code, code.access);
                         for block_num in 0.. {
                             debug!(svc = code.code, blk = block_num, "Reading block...");
-                            let rsp = felica::ReadWithoutEncryption {
+                            match (felica::ReadWithoutEncryption {
                                 idm,
                                 services: vec![code.code],
                                 blocks: vec![felica::BlockListElement {
@@ -142,17 +145,22 @@ pub fn probe_felica_systems(
                                     block_num,
                                 }],
                             }
-                            .call(card, wbuf, rbuf)?;
-                            for block in rsp.blocks {
-                                if block_num == 0 {
-                                    println!(" ┃ ││└┤ {}", hex::encode_upper(&block));
-                                } else {
-                                    println!(" ┃ ││ │ {}", hex::encode_upper(&block));
+                            .call(card, wbuf, rbuf))
+                            {
+                                Ok(rsp) => {
+                                    for block in rsp.blocks {
+                                        if block_num == 0 {
+                                            println!(" ┃ ││└┤ {}", hex::encode_upper(&block));
+                                        } else {
+                                            println!(" ┃ ││ │ {}", hex::encode_upper(&block));
+                                        }
+                                    }
                                 }
-                            }
-                            if rsp.status != (0x00, 0x00) {
-                                debug!("No more blocks!");
-                                break;
+                                Err(err @ Error::FelicaStatus(..)) => {
+                                    debug!(?err, "No more blocks");
+                                    break;
+                                }
+                                Err(err) => return Err(err.into()),
                             }
                         }
                     }
@@ -235,7 +243,14 @@ fn probe_felica_lite_s(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], idm0: 
                 name = block_name,
                 "Reading block..."
             );
-            let rsp = felica::ReadWithoutEncryption {
+
+            let name_p = format!("╴{:02X}╶╴{}╶", block_num, block_name).pad(
+                13,
+                '─',
+                pad::Alignment::Left,
+                false,
+            );
+            match (felica::ReadWithoutEncryption {
                 idm,
                 services: vec![svc.code],
                 blocks: vec![felica::BlockListElement {
@@ -244,29 +259,27 @@ fn probe_felica_lite_s(card: &mut Card, wbuf: &mut [u8], rbuf: &mut [u8], idm0: 
                     block_num,
                 }],
             }
-            .call(card, wbuf, rbuf)?;
-
-            let name_p = format!("╴{:02X}╶╴{}╶", block_num, block_name).pad(
-                13,
-                '─',
-                pad::Alignment::Left,
-                false,
-            );
-            if rsp.status == (0x00, 0x00) {
-                for block in rsp.blocks {
-                    if block_num == 0 {
-                        println!(" ┃ ││└┬{:}╴{}", name_p, hex::encode_upper(&block));
-                    } else {
-                        println!(" ┃ ││ ├{:}╴{}", name_p, hex::encode_upper(&block));
+            .call(card, wbuf, rbuf))
+            {
+                Ok(rsp) => {
+                    for block in rsp.blocks {
+                        if block_num == 0 {
+                            println!(" ┃ ││└┬{:}╴{}", name_p, hex::encode_upper(&block));
+                        } else {
+                            println!(" ┃ ││ ├{:}╴{}", name_p, hex::encode_upper(&block));
+                        }
                     }
                 }
-            } else {
-                let placeholder = String::from_utf8(vec![b'?'; 32]).unwrap();
-                if block_num == 0 {
-                    println!(" ┃ ││└┬{:}╴{}", name_p, placeholder);
-                } else {
-                    println!(" ┃ ││ ├{:}╴{}", name_p, placeholder);
+                Err(err @ cardinal::Error::FelicaStatus(_, _)) => {
+                    debug!(?err, "Couldn't read block");
+                    let placeholder = String::from_utf8(vec![b'?'; 32]).unwrap();
+                    if block_num == 0 {
+                        println!(" ┃ ││└┬{:}╴{}", name_p, placeholder);
+                    } else {
+                        println!(" ┃ ││ ├{:}╴{}", name_p, placeholder);
+                    }
                 }
+                Err(err) => return Err(err.into()),
             }
         }
     }

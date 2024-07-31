@@ -305,7 +305,7 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
                     hex::encode_upper(raw).fg::<ATRColorHB>()
                 );
                 println!(" ┃└──┬ {:02X} — TLV", 0x80.fg::<ATRColorHB>());
-                service_data.tap_some(|v| {
+                if let Some(v) = service_data {
                     println!(
                         " ┃   ├──┬ {:} — services: {:02X}",
                         "3X".fg::<ATRColorHB>(),
@@ -335,7 +335,7 @@ fn probe_atr(card: &mut Card, rbuf: &mut [u8]) -> Result<atr::ATR> {
                     if v & 0b0000_0001 > 0 {
                         println!(" ┃   │  ├── [---- ---1] — {}", "RESERVED".red());
                     }
-                });
+                };
 
                 if let Some(ia) = initial_access.as_ref() {
                     println!(" ┃   ├──┬ {:} — initial access", "4X".fg::<ATRColorHB>());
